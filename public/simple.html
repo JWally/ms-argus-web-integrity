@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Argus Integrity — Local Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #1a1a1a; color: #eee; padding: 20px; max-width: 900px; }
+    h1 { color: #88f; margin-bottom: 4px; font-size: 18px; }
+    p { color: #666; font-size: 12px; margin-bottom: 16px; }
+    #toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    button { padding: 8px 20px; font-size: 13px; cursor: pointer; background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 4px; font-family: monospace; }
+    button:hover:not(:disabled) { background: #333; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #duration { color: #8f8; font-size: 12px; }
+    #controls { display: none; gap: 8px; }
+    #controls button { padding: 4px 12px; font-size: 11px; color: #888; border-color: #333; }
+
+    .accordion { display: flex; flex-direction: column; gap: 4px; }
+
+    .item { border-radius: 4px; overflow: hidden; border: 1px solid #2e2e2e; }
+    .item.alert { border-color: #622; }
+    .item.warn  { border-color: #542; }
+    .item.ok    { border-color: #2a2a2a; }
+
+    .header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; cursor: pointer; user-select: none;
+      background: #222;
+    }
+    .header:hover { background: #262626; }
+    .item.alert .header { background: #1e0e0e; }
+    .item.warn  .header { background: #1a140a; }
+
+    .arrow { font-size: 10px; color: #555; transition: transform 0.15s; flex-shrink: 0; }
+    .item.open .arrow { transform: rotate(90deg); }
+
+    .title { font-size: 12px; font-weight: bold; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
+    .item.alert .title { color: #f88; }
+    .item.warn  .title { color: #fa8; }
+    .item.ok    .title { color: #888; }
+
+    .badges { display: flex; gap: 6px; }
+    .badge { font-size: 10px; padding: 1px 7px; border-radius: 8px; font-weight: bold; }
+    .badge.red    { background: #400; color: #f88; }
+    .badge.yellow { background: #430; color: #fa8; }
+    .badge.green  { background: #040; color: #8f8; }
+    .badge.grey   { background: #333; color: #999; }
+
+    .body { display: none; border-top: 1px solid #2a2a2a; background: #1e1e1e; }
+    .item.open .body { display: block; }
+
+    pre {
+      padding: 12px; font-size: 11px; line-height: 1.5;
+      white-space: pre-wrap; word-break: break-all;
+      color: #bbb; max-height: 500px; overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Argus Integrity</h1>
+  <p>Local signal collection — no API submission</p>
+
+  <div id="toolbar">
+    <button id="runBtn">Run Checks</button>
+    <span id="duration"></span>
+    <div id="controls">
+      <button id="expandAll">Expand all</button>
+      <button id="collapseAll">Collapse all</button>
+    </div>
+  </div>
+
+  <div class="accordion" id="accordion"></div>
+
+  <script type="module">
+    import { collectIntegrity, runVmDetection } from '/dist/argus.esm.js';
+
+    const runBtn = document.getElementById('runBtn');
+    const durationEl = document.getElementById('duration');
+    const accordion = document.getElementById('accordion');
+    const controls = document.getElementById('controls');
+
+    document.getElementById('expandAll').addEventListener('click', () => {
+      accordion.querySelectorAll('.item').forEach(el => el.classList.add('open'));
+    });
+    document.getElementById('collapseAll').addEventListener('click', () => {
+      accordion.querySelectorAll('.item').forEach(el => el.classList.remove('open'));
+    });
+
+    runBtn.addEventListener('click', async () => {
+      runBtn.disabled = true;
+      runBtn.textContent = 'Running...';
+      durationEl.textContent = '';
+      accordion.innerHTML = '';
+      controls.style.display = 'none';
+
+      try {
+        const result = await collectIntegrity();
+        const vmResult = await runVmDetection(result);
+        durationEl.textContent = `${result.meta.durationMs}ms`;
+        controls.style.display = 'flex';
+
+        for (const s of buildSections(result, vmResult)) {
+          accordion.appendChild(makeItem(s));
+        }
+      } catch (err) {
+        accordion.appendChild(makeItem({
+          title: 'Error', level: 'alert',
+          badges: [{ text: 'EXCEPTION', color: 'red' }],
+          content: `${err.message}\n\n${err.stack}`,
+          open: true,
+        }));
+      }
+
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run Again';
+    });
+
+    function makeItem({ title, level, badges = [], content, open = false }) {
+      const item = document.createElement('div');
+      item.className = `item ${level}${open ? ' open' : ''}`;
+
+      const badgeHtml = badges.map(b =>
+        `<span class="badge ${b.color}">${b.text}</span>`
+      ).join('');
+
+      item.innerHTML = `
+        <div class="header">
+          <span class="arrow">▶</span>
+          <span class="title">${title}</span>
+          <span class="badges">${badgeHtml}</span>
+        </div>
+        <div class="body"><pre>${escHtml(JSON.stringify(content, null, 2))}</pre></div>
+      `;
+
+      item.querySelector('.header').addEventListener('click', () => {
+        item.classList.toggle('open');
+      });
+
+      return item;
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function badge(text, color) { return { text, color }; }
+
+    function buildSections(r, vm) {
+      const sections = [];
+
+      // Engine
+      const mismatch = r.engine?.engineMismatch;
+      sections.push({
+        title: 'Engine',
+        level: mismatch ? 'alert' : 'ok',
+        badges: mismatch ? [badge('MISMATCH', 'red')] : [],
+        content: r.engine,
+        open: !!mismatch,
+      });
+
+      // Headless
+      const isHeadless = r.headless?.headless && Object.values(r.headless.headless).some(Boolean);
+      const likeHeadless = r.headless?.likeHeadless && Object.values(r.headless.likeHeadless).some(Boolean);
+      const stealth = r.headless?.stealth && Object.values(r.headless.stealth).some(Boolean);
+      const headlessLevel = isHeadless ? 'alert' : (likeHeadless || stealth) ? 'warn' : 'ok';
+      const headlessBadges = [];
+      if (isHeadless) headlessBadges.push(badge('HEADLESS', 'red'));
+      if (stealth) headlessBadges.push(badge('STEALTH', 'yellow'));
+      else if (likeHeadless) headlessBadges.push(badge('SUSPICIOUS', 'yellow'));
+      sections.push({ title: 'Headless', level: headlessLevel, badges: headlessBadges, content: r.headless, open: isHeadless });
+
+      // Lies
+      const lieCount = r.lies?.lieCount ?? 0;
+      sections.push({
+        title: 'Lies / Tampering',
+        level: lieCount > 3 ? 'alert' : lieCount > 0 ? 'warn' : 'ok',
+        badges: lieCount > 0 ? [badge(`${lieCount} lies`, lieCount > 3 ? 'red' : 'yellow')] : [],
+        content: r.lies,
+        open: lieCount > 0,
+      });
+
+      // Trash
+      const trashCount = r.trash?.trashBin?.length ?? 0;
+      sections.push({
+        title: 'Trash / Validation',
+        level: trashCount > 0 ? 'warn' : 'ok',
+        badges: trashCount > 0 ? [badge(`${trashCount} items`, 'yellow')] : [],
+        content: r.trash,
+      });
+
+      // Resistance
+      const brave = r.resistance?.privacy?.brave;
+      const tor = r.resistance?.privacy?.tor;
+      const rfp = r.resistance?.privacy?.resistFingerprinting;
+      const resBadges = [];
+      if (tor) resBadges.push(badge('TOR', 'yellow'));
+      if (brave) resBadges.push(badge('BRAVE', 'yellow'));
+      if (rfp) resBadges.push(badge('RFP', 'yellow'));
+      sections.push({ title: 'Resistance', level: resBadges.length ? 'warn' : 'ok', badges: resBadges, content: r.resistance });
+
+      // Inconsistencies
+      const inconCount = r.inconsistencies?.inconsistencies?.length ?? 0;
+      sections.push({
+        title: 'Inconsistencies',
+        level: inconCount > 0 ? 'warn' : 'ok',
+        badges: inconCount > 0 ? [badge(`${inconCount}`, 'yellow')] : [],
+        content: r.inconsistencies,
+        open: inconCount > 0,
+      });
+
+      // Incognito
+      sections.push({
+        title: 'Incognito',
+        level: 'ok',
+        badges: r.incognito?.isPrivate ? [badge('PRIVATE', 'yellow')] : [],
+        content: r.incognito,
+      });
+
+      // Navigator
+      sections.push({ title: 'Navigator', level: 'ok', badges: [], content: r.navigator });
+
+      // Screen
+      sections.push({ title: 'Screen', level: 'ok', badges: [], content: r.screen });
+
+      // Intl / Locale
+      sections.push({ title: 'Intl / Locale', level: 'ok', badges: [], content: r.intl });
+
+      // Timezone
+      const tzLied = r.timezone?.lied;
+      sections.push({
+        title: 'Timezone',
+        level: tzLied ? 'warn' : 'ok',
+        badges: tzLied ? [badge('LIED', 'yellow')] : [],
+        content: r.timezone,
+      });
+
+      // Timezone — VM
+      const vmTz = vm?.vm?.timezone;
+      const vmTzMismatch = vm?.vmSignals?.includes('vm:tz_offset_mismatch');
+      const tzMatch = vmTz && r.timezone &&
+        vmTz.offset === r.timezone.offset &&
+        vmTz.offsetComputed === r.timezone.offsetComputed &&
+        vmTz.location === r.timezone.location?.replace(/_/g, ' ').split('/').join(', ');
+      const vmTzBadges = [];
+      if (vmTzMismatch) vmTzBadges.push(badge('MISMATCH', 'red'));
+      else if (vmTz && tzMatch) vmTzBadges.push(badge('MATCH', 'green'));
+      else if (vmTz) vmTzBadges.push(badge('CHECK', 'grey'));
+      sections.push({
+        title: 'Timezone — VM',
+        level: vmTzMismatch ? 'alert' : 'ok',
+        badges: vmTzBadges,
+        content: vmTz ?? null,
+        open: !!vmTzMismatch,
+      });
+
+      // Timing
+      sections.push({ title: 'Timing', level: 'ok', badges: [], content: r.timing });
+
+      // CSS Media
+      sections.push({ title: 'CSS Media', level: 'ok', badges: [], content: r.cssMedia });
+
+      // CSS Media — VM
+      const vmCss = vm?.vm?.cssMedia;
+      const vmCssPointerNone = vm?.vmSignals?.includes('vm:css_pointer_none');
+      const vmCssMismatch = vm?.vmSignals?.includes('vm:css_matchmedia_mismatch');
+      const vmCssScreenMismatch = vm?.vmSignals?.includes('vm:css_screen_mismatch');
+      const vmCssBadges = [];
+      if (vmCssPointerNone) vmCssBadges.push(badge('POINTER NONE', 'red'));
+      if (vmCssMismatch) vmCssBadges.push(badge('MISMATCH', 'red'));
+      if (vmCssScreenMismatch) vmCssBadges.push(badge('SCREEN MISMATCH', 'red'));
+      if (vmCss !== undefined && !vmCssPointerNone && !vmCssMismatch && !vmCssScreenMismatch) {
+        vmCssBadges.push(badge('clean', 'green'));
+      }
+      sections.push({
+        title: 'CSS Media — VM',
+        level: (vmCssPointerNone || vmCssMismatch || vmCssScreenMismatch) ? 'alert' : 'ok',
+        badges: vmCssBadges,
+        content: vmCss ?? null,
+        open: !!(vmCssPointerNone || vmCssMismatch || vmCssScreenMismatch),
+      });
+
+      // Status
+      sections.push({ title: 'Status', level: 'ok', badges: [], content: r.status });
+
+      // WebRTC
+      sections.push({ title: 'WebRTC', level: 'ok', badges: [], content: r.webrtc });
+
+      // WebRTC — VM
+      const vmWrtc = vm?.vm?.webrtc;
+      const vmWrtcUnavailable = vm?.vmSignals?.includes('vm:webrtc_unavailable');
+      const vmWrtcRawIp = vm?.vmSignals?.includes('vm:webrtc_raw_ip');
+      const vmWrtcBadges = [];
+      if (vmWrtcUnavailable) vmWrtcBadges.push(badge('UNAVAILABLE', 'grey'));
+      else if (vmWrtcRawIp) vmWrtcBadges.push(badge('RAW IP', 'red'));
+      else if (vmWrtc !== undefined) {
+        const jsHasMdns = r.webrtc?.iceCandidates?.hasMDNS;
+        const vmHasMdns = vmWrtc?.iceCandidates?.hasMDNS;
+        if (jsHasMdns === vmHasMdns) vmWrtcBadges.push(badge('MATCH', 'green'));
+        else vmWrtcBadges.push(badge('MISMATCH', 'red'));
+      }
+      sections.push({
+        title: 'WebRTC — VM',
+        level: vmWrtcRawIp ? 'alert' : 'ok',
+        badges: vmWrtcBadges,
+        content: vmWrtc ?? null,
+        open: !!vmWrtcRawIp,
+      });
+
+      // Worker Scope
+      const wsLied = r.workerScope?.lied;
+      sections.push({
+        title: 'Worker Scope',
+        level: wsLied ? 'warn' : 'ok',
+        badges: wsLied ? [badge('LIED', 'yellow')] : [],
+        content: r.workerScope,
+      });
+
+      // Worker Scope — VM
+      const vmWs = vm?.vm?.workerScope;
+      const vmWsLied = vm?.vmSignals?.includes('vm:worker_lied');
+      const vmWsUnavailable = vm?.vmSignals?.includes('vm:worker_unavailable');
+      const vmWsBadges = [];
+      if (vmWsUnavailable) vmWsBadges.push(badge('UNAVAILABLE', 'grey'));
+      else if (vmWsLied) vmWsBadges.push(badge('LIED', 'yellow'));
+      else if (vmWs) {
+        const agree = (vmWsLied === true) === (wsLied === true);
+        vmWsBadges.push(badge(agree ? 'MATCH' : 'MISMATCH', agree ? 'green' : 'red'));
+      }
+      sections.push({
+        title: 'Worker Scope — VM',
+        level: vmWsLied ? 'warn' : 'ok',
+        badges: vmWsBadges,
+        content: vmWs ?? null,
+      });
+
+      // Errors
+      const errCount = r.errors?.length ?? 0;
+      if (errCount > 0) {
+        sections.push({
+          title: 'Captured Errors',
+          level: 'warn',
+          badges: [badge(`${errCount}`, 'yellow')],
+          content: r.errors,
+          open: true,
+        });
+      }
+
+      // VM Signals
+      const vmSigCount = vm?.vmSignals?.length ?? 0;
+      sections.push({
+        title: 'VM Signals',
+        level: vmSigCount > 0 ? 'alert' : 'ok',
+        badges: vmSigCount > 0 ? [badge(`${vmSigCount}`, 'red')] : [badge('clean', 'green')],
+        content: { signals: vm?.vmSignals ?? [] },
+        open: vmSigCount > 0,
+      });
+
+      sections.sort((a, b) => a.title.localeCompare(b.title));
+      return sections;
+    }
+  </script>
+</body>
+</html>

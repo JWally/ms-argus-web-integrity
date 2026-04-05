@@ -1,0 +1,33 @@
+node_modules
+.breakpoints
+public/creep.js
+public/creep.js.map
+public/creepworker.js
+public/style.prefix.css
+notes.md
+# Build output
+dist/
+cdk.out/
+cdk.out2/
+
+# Baseline fingerprint (local testing)
+baseline.json
+coverage/
+
+# Generated VM bytecode (rebuild with npm run compile:vm)
+src/vm/bytecode-modules.ts
+
+# WASM build artifacts
+wasm/core-pkg/
+wasm/simd-pkg/
+rust/wasm-fingerprint/target/
+rust/wasm-fingerprint/Cargo.lock
+
+# Generated docs (typedoc)
+docs/
+
+# Rollup build output in public
+public/argus.esm.js
+
+# Helper Script Ignores
+*.sick

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/index-lite.ts",
+    "src/loader.ts",
+    "src/loader-lite.ts",
+    "bin/*.ts",
+    "lib/**/*.ts"
+  ],
+  "project": ["src/**/*.ts", "lib/**/*.ts", "bin/**/*.ts"],
+  "ignore": [
+    "**/*.test.ts",
+    "scripts/**",
+    "src/timezone/constants-lite.ts",
+    "src/webgl/constants-lite.ts",
+    "src/utils/exile.ts",
+    "src/utils/html.ts",
+    "src/worker/types.ts"
+  ],
+  "ignoreDependencies": ["ts-node", "acorn"],
+  "exclude": ["types", "nsTypes", "exports", "duplicates"]
+}

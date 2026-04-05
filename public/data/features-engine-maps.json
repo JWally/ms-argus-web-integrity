@@ -1,0 +1,750 @@
+{
+  "blink": {
+    "js": {
+      "76": [
+        "Document.onsecuritypolicyviolation",
+        "Promise.allSettled"
+      ],
+      "77": [
+        "Document.onformdata",
+        "Document.onpointerrawupdate"
+      ],
+      "78": [
+        "Element.elementTiming"
+      ],
+      "79": [
+        "Document.onanimationend",
+        "Document.onanimationiteration",
+        "Document.onanimationstart",
+        "Document.ontransitionend"
+      ],
+      "80": [
+        "!Document.registerElement",
+        "!Element.createShadowRoot",
+        "!Element.getDestinationInsertionPoints"
+      ],
+      "81": [
+        "Document.onwebkitanimationend",
+        "Document.onwebkitanimationiteration",
+        "Document.onwebkitanimationstart",
+        "Document.onwebkittransitionend",
+        "Element.ariaAtomic",
+        "Element.ariaAutoComplete",
+        "Element.ariaBusy",
+        "Element.ariaChecked",
+        "Element.ariaColCount",
+        "Element.ariaColIndex",
+        "Element.ariaColSpan",
+        "Element.ariaCurrent",
+        "Element.ariaDisabled",
+        "Element.ariaExpanded",
+        "Element.ariaHasPopup",
+        "Element.ariaHidden",
+        "Element.ariaKeyShortcuts",
+        "Element.ariaLabel",
+        "Element.ariaLevel",
+        "Element.ariaLive",
+        "Element.ariaModal",
+        "Element.ariaMultiLine",
+        "Element.ariaMultiSelectable",
+        "Element.ariaOrientation",
+        "Element.ariaPlaceholder",
+        "Element.ariaPosInSet",
+        "Element.ariaPressed",
+        "Element.ariaReadOnly",
+        "Element.ariaRelevant",
+        "Element.ariaRequired",
+        "Element.ariaRoleDescription",
+        "Element.ariaRowCount",
+        "Element.ariaRowIndex",
+        "Element.ariaRowSpan",
+        "Element.ariaSelected",
+        "Element.ariaSort",
+        "Element.ariaValueMax",
+        "Element.ariaValueMin",
+        "Element.ariaValueNow",
+        "Element.ariaValueText",
+        "Intl.DisplayNames"
+      ],
+      "83": [
+        "Element.ariaDescription",
+        "Element.onbeforexrselect"
+      ],
+      "84": [
+        "Document.getAnimations",
+        "Document.timeline",
+        "Element.ariaSetSize",
+        "Element.getAnimations"
+      ],
+      "85": [
+        "Promise.any",
+        "String.replaceAll"
+      ],
+      "86": [
+        "Document.fragmentDirective",
+        "Document.replaceChildren",
+        "Element.replaceChildren",
+        "!Atomics.wake"
+      ],
+      "90": [
+        "Document.onbeforexrselect",
+        "RegExp.hasIndices",
+        "!Element.onbeforexrselect"
+      ],
+      "91": [
+        "Element.getInnerHTML"
+      ],
+      "92": [
+        "Array.at",
+        "String.at"
+      ],
+      "93": [
+        "Error.cause",
+        "Object.hasOwn"
+      ],
+      "94": [
+        "!Error.cause",
+        "Object.hasOwn"
+      ],
+      "102": [
+        "Element.ariaInvalid",
+        "Document.onbeforematch"
+      ],
+      "110": [
+        "Array.toReversed",
+        "Array.toSorted",
+        "Array.toSpliced",
+        "Array.with"
+      ],
+      "111": [
+        "String.isWellFormed",
+        "String.toWellFormed",
+        "Document.startViewTransition"
+      ],
+      "87-89": [
+        "Atomics.waitAsync",
+        "Document.ontransitioncancel",
+        "Document.ontransitionrun",
+        "Document.ontransitionstart",
+        "Intl.Segmenter"
+      ],
+      "95-96": [
+        "WebAssembly.Exception",
+        "WebAssembly.Tag"
+      ],
+      "97-98": [
+        "Array.findLast",
+        "Array.findLastIndex",
+        "Document.onslotchange"
+      ],
+      "99-101": [
+        "Intl.supportedValuesOf",
+        "Document.oncontextlost",
+        "Document.oncontextrestored"
+      ],
+      "103-106": [
+        "Element.role"
+      ],
+      "107-109": [
+        "Element.ariaBrailleLabel",
+        "Element.ariaBrailleRoleDescription"
+      ],
+      "112-113": [
+        "RegExp.unicodeSets"
+      ],
+      "114-115": [
+        "JSON.rawJSON",
+        "JSON.isRawJSON"
+      ]
+    },
+    "css": {
+      "76": [
+        "backdrop-filter"
+      ],
+      "81": [
+        "color-scheme",
+        "image-orientation"
+      ],
+      "83": [
+        "contain-intrinsic-size"
+      ],
+      "84": [
+        "appearance",
+        "ruby-position"
+      ],
+      "87": [
+        "ascent-override",
+        "border-block",
+        "border-block-color",
+        "border-block-style",
+        "border-block-width",
+        "border-inline",
+        "border-inline-color",
+        "border-inline-style",
+        "border-inline-width",
+        "descent-override",
+        "inset",
+        "inset-block",
+        "inset-block-end",
+        "inset-block-start",
+        "inset-inline",
+        "inset-inline-end",
+        "inset-inline-start",
+        "line-gap-override",
+        "margin-block",
+        "margin-inline",
+        "padding-block",
+        "padding-inline",
+        "text-decoration-thickness",
+        "text-underline-offset"
+      ],
+      "88": [
+        "aspect-ratio"
+      ],
+      "89": [
+        "border-end-end-radius",
+        "border-end-start-radius",
+        "border-start-end-radius",
+        "border-start-start-radius",
+        "forced-color-adjust"
+      ],
+      "90": [
+        "overflow-clip-margin"
+      ],
+      "91": [
+        "additive-symbols",
+        "fallback",
+        "negative",
+        "pad",
+        "prefix",
+        "range",
+        "speak-as",
+        "suffix",
+        "symbols",
+        "system"
+      ],
+      "92": [
+        "size-adjust"
+      ],
+      "93": [
+        "accent-color"
+      ],
+      "94": [
+        "scrollbar-gutter"
+      ],
+      "104": [
+        "object-view-box"
+      ],
+      "105": [
+        "container-name",
+        "container-type",
+        "container"
+      ],
+      "108": [
+        "hyphenate-character",
+        "!orientation",
+        "!max-zoom",
+        "!min-zoom",
+        "!user-zoom"
+      ],
+      "109": [
+        "hyphenate-limit-chars",
+        "math-depth",
+        "math-shift",
+        "math-style"
+      ],
+      "110": [
+        "initial-letter"
+      ],
+      "77-80": [
+        "overscroll-behavior-block",
+        "overscroll-behavior-inline"
+      ],
+      "85-86": [
+        "content-visibility",
+        "counter-set",
+        "inherits",
+        "initial-value",
+        "page-orientation",
+        "syntax"
+      ],
+      "95-96": [
+        "app-region",
+        "contain-intrinsic-block-size",
+        "contain-intrinsic-height",
+        "contain-intrinsic-inline-size",
+        "contain-intrinsic-width"
+      ],
+      "97-98": [
+        "font-synthesis-small-caps",
+        "font-synthesis-style",
+        "font-synthesis-weight",
+        "font-synthesis"
+      ],
+      "99-100": [
+        "text-emphasis-color",
+        "text-emphasis-position",
+        "text-emphasis-style",
+        "text-emphasis"
+      ],
+      "101-103": [
+        "font-palette",
+        "base-palette",
+        "override-colors"
+      ],
+      "106-107": [
+        "hyphenate-character"
+      ],
+      "111-113": [
+        "baseline-source",
+        "font-variant-alternates",
+        "view-transition-name"
+      ],
+      "114-115": [
+        "text-wrap",
+        "white-space-collapse"
+      ]
+    },
+    "win": {
+      "80": [
+        "CompressionStream",
+        "DecompressionStream",
+        "FeaturePolicy",
+        "FragmentDirective",
+        "PeriodicSyncManager",
+        "VideoPlaybackQuality"
+      ],
+      "81": [
+        "SubmitEvent",
+        "XRHitTestResult",
+        "XRHitTestSource",
+        "XRRay",
+        "XRTransientInputHitTestResult",
+        "XRTransientInputHitTestSource"
+      ],
+      "83": [
+        "BarcodeDetector",
+        "XRDOMOverlayState",
+        "XRSystem"
+      ],
+      "84": [
+        "AnimationPlaybackEvent",
+        "AnimationTimeline",
+        "CSSAnimation",
+        "CSSTransition",
+        "DocumentTimeline",
+        "FinalizationRegistry",
+        "LayoutShiftAttribution",
+        "ResizeObserverSize",
+        "WakeLock",
+        "WakeLockSentinel",
+        "WeakRef",
+        "XRLayer"
+      ],
+      "85": [
+        "AggregateError",
+        "CSSPropertyRule",
+        "EventCounts",
+        "XRAnchor",
+        "XRAnchorSet"
+      ],
+      "86": [
+        "RTCEncodedAudioFrame",
+        "RTCEncodedVideoFrame"
+      ],
+      "87": [
+        "CookieChangeEvent",
+        "CookieStore",
+        "CookieStoreManager",
+        "Scheduling"
+      ],
+      "88": [
+        "Scheduling",
+        "!BarcodeDetector"
+      ],
+      "89": [
+        "ReadableByteStreamController",
+        "ReadableStreamBYOBReader",
+        "ReadableStreamBYOBRequest",
+        "ReadableStreamDefaultController",
+        "XRWebGLBinding"
+      ],
+      "90": [
+        "AbstractRange",
+        "CustomStateSet",
+        "NavigatorUAData",
+        "XRCPUDepthInformation",
+        "XRDepthInformation",
+        "XRLightEstimate",
+        "XRLightProbe",
+        "XRWebGLDepthInformation"
+      ],
+      "91": [
+        "CSSCounterStyleRule",
+        "GravitySensor",
+        "NavigatorManagedData"
+      ],
+      "92": [
+        "CSSCounterStyleRule",
+        "!SharedArrayBuffer"
+      ],
+      "93": [
+        "WritableStreamDefaultController"
+      ],
+      "94": [
+        "AudioData",
+        "AudioDecoder",
+        "AudioEncoder",
+        "EncodedAudioChunk",
+        "EncodedVideoChunk",
+        "IdleDetector",
+        "ImageDecoder",
+        "ImageTrack",
+        "ImageTrackList",
+        "VideoColorSpace",
+        "VideoDecoder",
+        "VideoEncoder",
+        "VideoFrame",
+        "MediaStreamTrackGenerator",
+        "MediaStreamTrackProcessor",
+        "Profiler",
+        "VirtualKeyboard",
+        "DelegatedInkTrailPresenter",
+        "Ink",
+        "Scheduler",
+        "TaskController",
+        "TaskPriorityChangeEvent",
+        "TaskSignal",
+        "VirtualKeyboardGeometryChangeEvent"
+      ],
+      "99": [
+        "CanvasFilter",
+        "CSSLayerBlockRule",
+        "CSSLayerStatementRule"
+      ],
+      "100": [
+        "CSSMathClamp"
+      ],
+      "109": [
+        "MathMLElement"
+      ],
+      "110": [
+        "AudioSinkInfo"
+      ],
+      "95-96": [
+        "URLPattern"
+      ],
+      "97-98": [
+        "WebTransport",
+        "WebTransportBidirectionalStream",
+        "WebTransportDatagramDuplexStream",
+        "WebTransportError"
+      ],
+      "101-104": [
+        "CSSFontPaletteValuesRule"
+      ],
+      "105-106": [
+        "CSSContainerRule"
+      ],
+      "107-108": [
+        "XRCamera"
+      ],
+      "111-112": [
+        "ViewTransition"
+      ],
+      "113-115": [
+        "ViewTransition",
+        "!CanvasFilter"
+      ]
+    }
+  },
+  "gecko": {
+    "js": {
+      "71": [
+        "Promise.allSettled"
+      ],
+      "74": [
+        "!Array.toSource",
+        "!Boolean.toSource",
+        "!Date.toSource",
+        "!Error.toSource",
+        "!Function.toSource",
+        "!Intl.toSource",
+        "!JSON.toSource",
+        "!Math.toSource",
+        "!Number.toSource",
+        "!Object.toSource",
+        "!RegExp.toSource",
+        "!String.toSource",
+        "!WebAssembly.toSource"
+      ],
+      "77": [
+        "String.replaceAll"
+      ],
+      "78": [
+        "Atomics.add",
+        "Atomics.and",
+        "Atomics.compareExchange",
+        "Atomics.exchange",
+        "Atomics.isLockFree",
+        "Atomics.load",
+        "Atomics.notify",
+        "Atomics.or",
+        "Atomics.store",
+        "Atomics.sub",
+        "Atomics.wait",
+        "Atomics.wake",
+        "Atomics.xor",
+        "Document.replaceChildren",
+        "Element.replaceChildren",
+        "Intl.ListFormat",
+        "RegExp.dotAll"
+      ],
+      "85": [
+        "!Document.onshow",
+        "Promise.any"
+      ],
+      "86": [
+        "Intl.DisplayNames"
+      ],
+      "87": [
+        "Document.onbeforeinput"
+      ],
+      "92": [
+        "Object.hasOwn"
+      ],
+      "100": [
+        "WebAssembly.Tag",
+        "WebAssembly.Exception"
+      ],
+      "72-73": [
+        "Document.onformdata",
+        "Element.part"
+      ],
+      "75-76": [
+        "Document.getAnimations",
+        "Document.timeline",
+        "Element.getAnimations",
+        "Intl.Locale"
+      ],
+      "79-84": [
+        "Promise.any"
+      ],
+      "88-89": [
+        "RegExp.hasIndices"
+      ],
+      "90-91": [
+        "Array.at",
+        "String.at"
+      ],
+      "93-99": [
+        "Intl.supportedValuesOf",
+        "Document.onsecuritypolicyviolation",
+        "Document.onslotchange"
+      ],
+      "101-103": [
+        "Document.adoptedStyleSheets"
+      ],
+      "104-108": [
+        "Array.findLast",
+        "Array.findLastIndex"
+      ],
+      "109-112": [
+        "Document.onscrollend"
+      ]
+    },
+    "css": {
+      "71": [
+        "-moz-column-span"
+      ],
+      "72": [
+        "offset",
+        "offset-anchor",
+        "offset-distance",
+        "offset-path",
+        "offset-rotate",
+        "rotate",
+        "scale",
+        "translate"
+      ],
+      "73": [
+        "overscroll-behavior-block",
+        "overscroll-behavior-inline"
+      ],
+      "91": [
+        "tab-size"
+      ],
+      "96": [
+        "color-scheme"
+      ],
+      "97": [
+        "print-color-adjust",
+        "scrollbar-gutter",
+        "d"
+      ],
+      "102": [
+        "overflow-clip-margin"
+      ],
+      "109": [
+        "-webkit-clip-path"
+      ],
+      "110": [
+        "container-type",
+        "container-name",
+        "page",
+        "container"
+      ],
+      "111": [
+        "font-synthesis-small-caps",
+        "font-synthesis-style",
+        "font-synthesis-weight"
+      ],
+      "112": [
+        "font-synthesis-small-caps",
+        "!-moz-image-region"
+      ],
+      "74-79": [
+        "!-moz-stack-sizing",
+        "text-underline-position"
+      ],
+      "80-88": [
+        "appearance"
+      ],
+      "89-90": [
+        "!-moz-outline-radius",
+        "!-moz-outline-radius-bottomleft",
+        "!-moz-outline-radius-bottomright",
+        "!-moz-outline-radius-topleft",
+        "!-moz-outline-radius-topright",
+        "aspect-ratio"
+      ],
+      "92-95": [
+        "accent-color"
+      ],
+      "98-101": [
+        "hyphenate-character"
+      ],
+      "103-106": [
+        "scroll-snap-stop"
+      ],
+      "107-108": [
+        "backdrop-filter",
+        "font-palette",
+        "contain-intrinsic-block-size",
+        "contain-intrinsic-height",
+        "contain-intrinsic-inline-size",
+        "contain-intrinsic-width",
+        "contain-intrinsic-size"
+      ]
+    },
+    "win": {
+      "71": [
+        "MathMLElement",
+        "!SVGZoomAndPan"
+      ],
+      "74": [
+        "FormDataEvent",
+        "!uneval"
+      ],
+      "75": [
+        "AnimationTimeline",
+        "CSSAnimation",
+        "CSSTransition",
+        "DocumentTimeline",
+        "SubmitEvent"
+      ],
+      "78": [
+        "Atomics"
+      ],
+      "82": [
+        "MediaMetadata",
+        "MediaSession",
+        "Sanitizer"
+      ],
+      "83": [
+        "MediaMetadata",
+        "MediaSession",
+        "!Sanitizer"
+      ],
+      "84": [
+        "PerformancePaintTiming"
+      ],
+      "87": [
+        "onbeforeinput"
+      ],
+      "88": [
+        "onbeforeinput",
+        "!VisualViewport"
+      ],
+      "96": [
+        "Lock",
+        "LockManager"
+      ],
+      "97": [
+        "CSSLayerBlockRule",
+        "CSSLayerStatementRule"
+      ],
+      "98": [
+        "HTMLDialogElement"
+      ],
+      "99": [
+        "NavigationPreloadManager"
+      ],
+      "110": [
+        "CSSContainerRule"
+      ],
+      "111": [
+        "FileSystemFileHandle",
+        "FileSystemDirectoryHandle"
+      ],
+      "112": [
+        "FileSystemFileHandle",
+        "!U2F"
+      ],
+      "72-73": [
+        "!BatteryManager",
+        "FormDataEvent",
+        "Geolocation",
+        "GeolocationCoordinates",
+        "GeolocationPosition",
+        "GeolocationPositionError",
+        "!mozPaintCount"
+      ],
+      "76-77": [
+        "AudioParamMap",
+        "AudioWorklet",
+        "AudioWorkletNode",
+        "Worklet"
+      ],
+      "79-81": [
+        "AggregateError",
+        "FinalizationRegistry"
+      ],
+      "85-86": [
+        "PerformancePaintTiming",
+        "!HTMLMenuItemElement",
+        "!onshow"
+      ],
+      "89-92": [
+        "!ondevicelight",
+        "!ondeviceproximity",
+        "!onuserproximity"
+      ],
+      "93-95": [
+        "ElementInternals"
+      ],
+      "100-104": [
+        "WritableStream"
+      ],
+      "105-106": [
+        "TextDecoderStream",
+        "OffscreenCanvasRenderingContext2D",
+        "OffscreenCanvas",
+        "TextEncoderStream"
+      ],
+      "107-109": [
+        "CSSFontPaletteValuesRule"
+      ]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "docs",
+  "name": "Argus - Browser Fingerprinting Library",
+  "readme": "README.md",
+  "exclude": ["**/*.test.ts", "**/node_modules/**"],
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "includeVersion": true,
+  "categorizeByGroup": true,
+  "navigationLinks": {
+    "GitHub": "https://github.com/abrahamjuliot/CreepJS"
+  },
+  "plugin": [],
+  "skipErrorChecking": true
+}
