@@ -205,18 +205,18 @@ let tlsResult = __api_call_async(0x40);
 let tcpToken = __api_call_async(0x41);
 let h2Token = __api_call_async(0x42);
 
-// ── 12. Integrity hash — stable fingerprint hash + signal count + deploy secret ──
+// ── 12. Integrity hash — stable fingerprint hash + signal count + h2 token ──
 // GET_STABLE_HASH (0x16) returns fingerprint.hashes.stable from the bridge context.
 // Tying the hash to the stable fingerprint hash means a forged payload with a different
 // stable hash will produce a mismatching vmHash — detectable server-side.
-// '__DEPLOY_SECRET__' is replaced with the actual random secret at compile time.
+// h2Token binds the hash to this specific probe session (verified after decryption).
 let stableHash = __api_get(0x16);
 let h = '';
 h = h + stableHash;
 h = h + '|';
 h = h + String(signals.length);
 h = h + '|';
-h = h + '__DEPLOY_SECRET__';
+h = h + h2Token;
 
 let hv = 0;
 i = 0;
@@ -249,19 +249,25 @@ if (serverPubKey.length > 0) {
 
   if (payloadJSON.length > 0) {
     // ── XOR scramble payload before ECDH encryption ──────────────
-    // Key = sessionToken (from bridge, sent as X-Argus-Session) + deploy secret.
+    // Fibonacci-modulated sessionToken derivation. The algorithm is the secret,
+    // not a static key. Server derives the same key from X-Argus-Session header.
     // Runs inside VM bytecode so hooking the ECDH bridge call only sees garbage.
-    // Server reverses with X-Argus-Session header + INTEGRITY_DEPLOY_SECRET env var.
-    let xorKey = __api_get(0x1e) + '__DEPLOY_SECRET__';
+    let token = __api_get(0x1e);
+    let fib0 = 1;
+    let fib1 = 1;
     let scrambled = '';
     i = 0;
     while (i < payloadJSON.length) {
-      scrambled = scrambled + String.fromCharCode(
-        payloadJSON.charCodeAt(i) ^ xorKey.charCodeAt(i % xorKey.length)
-      );
+      let t = token.charCodeAt(i % token.length);
+      let f = fib1 % 256;
+      scrambled = scrambled + String.fromCharCode(payloadJSON.charCodeAt(i) ^ (t ^ f));
+      let fib2 = fib0 + fib1;
+      fib0 = fib1;
+      fib1 = fib2;
+      if (fib1 > 1000000) { fib0 = 1; fib1 = 1; }
       i = i + 1;
     }
-    xorKey = 0;
+    token = 0;
 
     // Encrypt with ECDH+HKDF+AES-GCM → Uint8Array [iv | ciphertext+tag]
     let encrypted = __api_call_async(

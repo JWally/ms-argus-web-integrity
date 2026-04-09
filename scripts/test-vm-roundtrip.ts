@@ -7,8 +7,7 @@ import { encode } from './compiler/encoder';
 import { decode } from '../src/vm/decoder';
 import { Op, hasOperand } from '../src/vm/opcodes';
 
-const src = fs.readFileSync('scripts/vm-src/main.ts', 'utf-8')
-  .replace("'__DEPLOY_SECRET__'", "'test_secret'");
+const src = fs.readFileSync('scripts/vm-src/main.ts', 'utf-8');
 
 const mod = compile(src);
 console.log(`Compiled: ${mod.code.length} instructions`);

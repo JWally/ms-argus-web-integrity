@@ -710,10 +710,10 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
     },
   });
 
-  // 0x1e: session token — used as part of the inner XOR scramble key.
-  // The VM builds xorKey = sessionToken + deploySecret inside bytecode,
+  // 0x1e: session token — seed for the inner XOR scramble derivation.
+  // The VM derives a per-byte key using Fibonacci-modulated sessionToken chars,
   // then XOR-scrambles the JSON before passing to ECDH encrypt.
-  // Server reverses with X-Argus-Session header + INTEGRITY_DEPLOY_SECRET env var.
+  // Server reverses with X-Argus-Session header using the same derivation.
   bridge.register(BridgeApi.GET_SESSION_TOKEN, {
     get: () => ctx.sessionToken,
   });
@@ -731,6 +731,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
             'Content-Type': 'application/octet-stream',
             'X-Argus-Origin': clientPubKeyB64,
             'X-Argus-Session': ctx.sessionToken,
+            'X-Argus-V': '2',
           },
           body: encrypted.buffer as ArrayBuffer,
         });

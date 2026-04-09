@@ -41,15 +41,10 @@ function main() {
   console.log('[compile-vm] Reading source...');
   const source = fs.readFileSync(VM_SRC, 'utf-8');
 
-  // Generate deploy secret first — it gets injected into the source before compilation
-  // so the actual random value is embedded in the bytecode string pool, not the placeholder.
-  const deploySecret = crypto.randomBytes(16).toString('hex');
-
-  // Strip TypeScript-specific syntax and inject the deploy secret
+  // Strip TypeScript-specific syntax
   const jsSource = source
     .replace(/\/\/\s*@ts-nocheck.*\n?/g, '')
-    .replace(/^\s*\/\/.*$/gm, (line) => line) // keep comments
-    .replaceAll("'__DEPLOY_SECRET__'", JSON.stringify(deploySecret)); // embed actual secret (all occurrences)
+    .replace(/^\s*\/\/.*$/gm, (line) => line); // keep comments
 
   console.log('[compile-vm] Compiling...');
   const module = compile(jsSource);
@@ -78,14 +73,10 @@ export const VM_BYTECODE = '${b64}';
 
 /** XOR key (hex) */
 export const VM_KEY = '${keyHex}';
-
-/** Deploy-time secret for integrity hash */
-export const DEPLOY_SECRET = '${deploySecret}';
 `;
 
   fs.writeFileSync(OUTPUT, output, 'utf-8');
   console.log(`[compile-vm] Written to ${path.relative(ROOT, OUTPUT)}`);
-  console.log(`[compile-vm] Deploy secret: ${deploySecret.slice(0, 8)}...`);
 }
 
 main();

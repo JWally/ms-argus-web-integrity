@@ -24,8 +24,7 @@ import type { IntegrityResult } from '../integrity';
 import type { EvercookieData } from '../utils/evercookie';
 import type { CryptoKeys } from '../utils/get-crypto-id';
 
-let bytecodeCache: { bytecode: string; key: string; secret: string } | null =
-  null;
+let bytecodeCache: { bytecode: string; key: string } | null = null;
 
 /** Module-level prefetch slot — populated by prefetchArgusVm(), consumed by runArgusVm() */
 let _prefetchSlot: Promise<{
@@ -46,7 +45,6 @@ async function loadBytecodeModules() {
     bytecodeCache = {
       bytecode: mod.VM_BYTECODE,
       key: mod.VM_KEY,
-      secret: mod.DEPLOY_SECRET,
     };
     return bytecodeCache;
   } catch {
