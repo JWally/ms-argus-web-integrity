@@ -1,15 +1,19 @@
 /**
- * Production build — terser minification.
+ * Production build — terser minification + selective javascript-obfuscator.
+ *
+ * Obfuscator runs ONLY on fingerprinting/detection modules (the readable stuff).
+ * VM, crypto, fetch, and async bridge code is excluded to avoid breaking
+ * Web Crypto API calls and async patterns.
  *
  * Usage: npm run build:obf (or via npm run build:prod)
  * Output: dist/argus-integrity.iife.js (no source map)
- *
  * Target: < 75KB gzipped
  */
 import typescript from '@rollup/plugin-typescript';
 import nodeResolve from '@rollup/plugin-node-resolve';
 import replace from '@rollup/plugin-replace';
 import terser from '@rollup/plugin-terser';
+import { obfuscator } from 'rollup-obfuscator';
 
 export default [
   {
@@ -32,6 +36,51 @@ export default [
         noEmitOnError: false,
         outDir: 'dist',
       }),
+      // Obfuscate detection/fingerprinting modules only — NOT vm/crypto/fetch
+      obfuscator({
+        // Only process detection logic files
+        include: [
+          'src/cssmedia/**',
+          'src/constants/**',
+          'src/engine/**',
+          'src/errors/**',
+          'src/headless/**',
+          'src/incognito/**',
+          'src/intl/**',
+          'src/lies/**',
+          'src/navigator/**',
+          'src/screen/**',
+          'src/shielding/**',
+          'src/status/**',
+          'src/timezone/**',
+          'src/timing/**',
+          'src/trash/**',
+          'src/webrtc/**',
+          'src/worker/**',
+          'src/integrity.ts',
+        ],
+        compact: true,
+        controlFlowFlattening: true,
+        controlFlowFlatteningThreshold: 0.3,
+        deadCodeInjection: false,
+        identifierNamesGenerator: 'hexadecimal',
+        renameGlobals: false,
+        selfDefending: false,
+        stringArray: true,
+        stringArrayCallsTransform: false,
+        stringArrayEncoding: [],
+        stringArrayIndexShift: true,
+        stringArrayRotate: true,
+        stringArrayShuffle: true,
+        stringArrayWrappersCount: 1,
+        stringArrayWrappersChainedCalls: false,
+        stringArrayWrappersType: 'variable',
+        stringArrayThreshold: 0.5,
+        splitStrings: false,
+        transformObjectKeys: false,
+        unicodeEscapeSequence: false,
+      }),
+      // Terser runs after obfuscator — compresses everything including obfuscated output
       terser({
         compress: {
           passes: 3,
