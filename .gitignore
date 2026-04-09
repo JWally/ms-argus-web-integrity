@@ -17,11 +17,8 @@ coverage/
 # Generated VM bytecode (rebuild with npm run compile:vm)
 src/vm/bytecode-modules.ts
 
-# WASM build artifacts
-wasm/core-pkg/
-wasm/simd-pkg/
-rust/wasm-fingerprint/target/
-rust/wasm-fingerprint/Cargo.lock
+# Playwright test results
+test-results/
 
 # Generated docs (typedoc)
 docs/
