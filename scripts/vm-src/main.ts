@@ -221,7 +221,7 @@ h = h + h2Token;
 let hv = 0;
 i = 0;
 while (i < h.length) {
-  hv = hv * 31 + i + 1;
+  hv = hv * 31 + h.charCodeAt(i);
   i = i + 1;
 }
 
