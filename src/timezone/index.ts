@@ -20,7 +20,6 @@
 import { captureError } from '../errors';
 import { lieProps } from '../lies';
 import { createTimer, logTestResult } from '../utils/helpers';
-import { expectFailure } from '../utils/expected-failure';
 
 import { MS_PER_MINUTE } from './constants';
 import type { TimezoneFingerprint } from './types';
@@ -53,24 +52,6 @@ function getTimezoneOffset(): number {
 
   // Use bitwise OR to truncate to integer (faster than Math.floor)
   return ~~offset;
-}
-
-/**
- * Formats a timezone identifier for display.
- *
- * Converts IANA format "America/Los_Angeles" to
- * human-readable "America, Los Angeles".
- *
- * @param location - IANA timezone identifier
- * @returns Formatted location string
- */
-function formatLocation(location: string): string {
-  try {
-    return location.replace(/_/g, ' ').split('/').join(', ');
-  } catch {
-    expectFailure('formatLocation', 'String manipulation failed');
-    return location;
-  }
 }
 
 /**
@@ -135,8 +116,8 @@ export default async function getTimezone(): Promise<
       // Timezone name from Date.toString() (e.g., "Pacific Standard Time")
       zone: extractTimezoneAbbreviation(new Date()),
 
-      // Human-readable IANA location (e.g., "America, Los Angeles")
-      location: formatLocation(timeZone),
+      // Raw IANA timezone identifier (e.g., "America/Los_Angeles")
+      location: timeZone,
 
       // Direct offset from Date API
       offset: new Date().getTimezoneOffset(),

@@ -4,6 +4,7 @@ const path = require('path')
 const home = path.join(__dirname, '/public')
 const app = express()
 app.use(express.static(home))
+app.use(express.static(__dirname + '/dist'))
 app.use('/dist', express.static(__dirname + '/dist'))
 
 const tryListen = (port) => {
@@ -18,4 +19,4 @@ const tryListen = (port) => {
     })
 }
 
-tryListen(8000)
+tryListen(Number(process.env.PORT) || 8000)

@@ -18,6 +18,13 @@ export function decode(buffer: ArrayBuffer): BytecodeModule {
   const flags = view.getUint16(offset);
   offset += 2;
 
+  // v2+: read opcode map (256 bytes, randomized → canonical)
+  let opcodeMap: Uint8Array | undefined;
+  if (version >= 2) {
+    opcodeMap = new Uint8Array(buffer.slice(offset, offset + 256));
+    offset += 256;
+  }
+
   // Strings
   const stringCount = view.getUint32(offset);
   offset += 4;
@@ -61,5 +68,5 @@ export function decode(buffer: ArrayBuffer): BytecodeModule {
     offset += 4;
   }
 
-  return { version, flags, strings, numbers, apiTable, code };
+  return { version, flags, strings, numbers, apiTable, code, opcodeMap };
 }

@@ -41,12 +41,17 @@ const getUserAgentData = async (nav) => {
 
 const getWebglData = () => {
   try {
-    const canvas = new OffscreenCanvas(256, 256);
-    const gl = canvas.getContext('webgl');
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    // Two separate canvases required — a canvas can only have one context type
+    const gl = new OffscreenCanvas(1, 1).getContext('webgl');
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    // WebGL2: Chrome 69+, Firefox 105+, Safari 17+ (Safari 16.4 returns null — handled)
+    const gl2 = new OffscreenCanvas(1, 1).getContext('webgl2');
+    const ext2 = gl2 && gl2.getExtension('WEBGL_debug_renderer_info');
     return {
-      webglVendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL),
-      webglRenderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
+      webglVendor: ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : undefined,
+      webglRenderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : undefined,
+      webgl2Vendor: ext2 ? gl2.getParameter(ext2.UNMASKED_VENDOR_WEBGL) : undefined,
+      webgl2Renderer: ext2 ? gl2.getParameter(ext2.UNMASKED_RENDERER_WEBGL) : undefined,
     };
   } catch { return {}; }
 };
@@ -74,7 +79,7 @@ const computeTimezoneOffset = () => {
 
 const getWorkerData = async () => {
   const userAgentData = await getUserAgentData(navigator);
-  const { webglVendor, webglRenderer } = getWebglData();
+  const { webglVendor, webglRenderer, webgl2Vendor, webgl2Renderer } = getWebglData();
   const timezoneOffset = computeTimezoneOffset();
   const timezoneLocation = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const locale = getLocale();
@@ -105,6 +110,8 @@ const getWorkerData = async () => {
     userAgent,
     webglRenderer,
     webglVendor,
+    webgl2Renderer,
+    webgl2Vendor,
     userAgentData
   };
 };
@@ -248,6 +255,8 @@ export interface WorkerScopeData {
   userAgent: string;
   webglRenderer?: string;
   webglVendor?: string;
+  webgl2Renderer?: string;
+  webgl2Vendor?: string;
   userAgentData?: Record<string, unknown>;
   system?: string;
   device?: string;
@@ -397,26 +406,23 @@ export async function spawnWorker() {
   };
 
   /**
-   * Gets WebGL vendor and renderer strings via OffscreenCanvas.
-   * Used for GPU fingerprinting in the worker scope.
+   * Gets WebGL1 and WebGL2 vendor/renderer strings via OffscreenCanvas.
+   * Two separate canvases required — a canvas can only have one context type.
+   * WebGL2: Chrome 69+, Firefox 105+, Safari 17+ (Safari 16.4 returns null — handled).
    */
   const getWebglData = () =>
     ask(() => {
       // @ts-ignore
-      const canvasOffscreenWebgl = new OffscreenCanvas(256, 256);
-      const contextWebgl = canvasOffscreenWebgl.getContext('webgl');
-      if (!contextWebgl) return undefined;
-      const rendererInfo = contextWebgl.getExtension(
-        'WEBGL_debug_renderer_info',
-      );
-      if (!rendererInfo) return undefined;
+      const gl = new OffscreenCanvas(1, 1).getContext('webgl');
+      const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      // @ts-ignore
+      const gl2 = new OffscreenCanvas(1, 1).getContext('webgl2');
+      const ext2 = gl2 && gl2.getExtension('WEBGL_debug_renderer_info');
       return {
-        webglVendor: contextWebgl.getParameter(
-          rendererInfo.UNMASKED_VENDOR_WEBGL,
-        ),
-        webglRenderer: contextWebgl.getParameter(
-          rendererInfo.UNMASKED_RENDERER_WEBGL,
-        ),
+        webglVendor: ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : undefined,
+        webglRenderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : undefined,
+        webgl2Vendor: ext2 ? gl2.getParameter(ext2.UNMASKED_VENDOR_WEBGL) : undefined,
+        webgl2Renderer: ext2 ? gl2.getParameter(ext2.UNMASKED_RENDERER_WEBGL) : undefined,
       };
     });
 
@@ -481,7 +487,7 @@ export async function spawnWorker() {
     );
 
     // webgl
-    const { webglVendor, webglRenderer } = getWebglData() || {};
+    const { webglVendor, webglRenderer, webgl2Vendor, webgl2Renderer } = getWebglData() || {};
 
     // timezone & locale
     const timezoneOffset = computeTimezoneOffset();
@@ -563,6 +569,8 @@ export async function spawnWorker() {
       userAgent,
       webglRenderer,
       webglVendor,
+      webgl2Renderer,
+      webgl2Vendor,
       userAgentData,
     };
   };
@@ -722,14 +730,16 @@ export default async function getBestWorkerScope() {
     })();
     const mainWebgl = (() => {
       try {
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl') as WebGLRenderingContext | null;
-        if (!gl) return {};
-        const ext = gl.getExtension('WEBGL_debug_renderer_info');
-        if (!ext) return {};
+        const gl = document.createElement('canvas').getContext('webgl') as WebGLRenderingContext | null;
+        const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+        // Two separate canvases — a canvas can only have one context type
+        const gl2 = document.createElement('canvas').getContext('webgl2') as WebGL2RenderingContext | null;
+        const ext2 = gl2 && gl2.getExtension('WEBGL_debug_renderer_info');
         return {
-          webglRenderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL),
-          webglVendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL),
+          webglRenderer: ext ? gl!.getParameter(ext.UNMASKED_RENDERER_WEBGL) : undefined,
+          webglVendor: ext ? gl!.getParameter(ext.UNMASKED_VENDOR_WEBGL) : undefined,
+          webgl2Renderer: ext2 ? gl2!.getParameter(ext2.UNMASKED_RENDERER_WEBGL) : undefined,
+          webgl2Vendor: ext2 ? gl2!.getParameter(ext2.UNMASKED_VENDOR_WEBGL) : undefined,
         };
       } catch { return {}; }
     })();
@@ -975,6 +985,32 @@ export default async function getBestWorkerScope() {
         : undefined;
     }
 
+    // Cross-scope consistency: compare web vs shared for new fields.
+    // A spoofer that patches one worker type but not the other is caught here.
+    if (sharedResult?.userAgent && webResult?.userAgent) {
+      const crossFields: Array<keyof WorkerScopeData> = [
+        'webgl2Renderer',
+        'webgl2Vendor',
+        'systemCurrencyLocale',
+        'engineCurrencyLocale',
+      ];
+      for (const f of crossFields) {
+        const a = sharedResult[f];
+        const b = webResult[f];
+        if (a !== undefined && b !== undefined && a !== b) {
+          workerScope.lied = true;
+          documentLie('WorkerGlobalScope', `${f} differs between shared and web worker`);
+        }
+      }
+      // userAgentData is an object — compare via JSON
+      if (sharedResult.userAgentData && webResult.userAgentData) {
+        if (JSON.stringify(sharedResult.userAgentData) !== JSON.stringify(webResult.userAgentData)) {
+          workerScope.lied = true;
+          documentLie('WorkerGlobalScope', 'userAgentData differs between shared and web worker');
+        }
+      }
+    }
+
     logTestResult({
       time: timer.stop(),
       test: `${WORKER_TYPE} worker`,
@@ -1021,8 +1057,13 @@ const COMPARISON_FIELDS = [
   'timezoneOffset',
   'timezoneLocation',
   'locale',
+  'systemCurrencyLocale',
+  'engineCurrencyLocale',
   'webglRenderer',
   'webglVendor',
+  'webgl2Renderer',
+  'webgl2Vendor',
+  'userAgentData',
 ] as const;
 
 /**
@@ -1052,6 +1093,10 @@ function compareWorkerResults(results: WorkerResult[]): WorkerComparison {
   const differences: WorkerDifference[] = [];
   const successfulResults = results.filter((r) => r.data !== null);
 
+  /** Serializes objects to JSON for stable equality comparison. Primitives pass through. */
+  const serialize = (v: unknown): unknown =>
+    v !== null && typeof v === 'object' ? JSON.stringify(v) : v;
+
   for (const field of COMPARISON_FIELDS) {
     const values: Record<WorkerType, unknown> = {} as Record<
       WorkerType,
@@ -1062,10 +1107,11 @@ function compareWorkerResults(results: WorkerResult[]): WorkerComparison {
     let hasDifference = false;
 
     for (const result of successfulResults) {
-      const value = result.data?.[field as keyof WorkerScopeData];
-      values[result.type] = value;
+      const raw = result.data?.[field as keyof WorkerScopeData];
+      values[result.type] = raw;
 
-      if (value !== undefined) {
+      if (raw !== undefined) {
+        const value = serialize(raw);
         if (!hasValue) {
           firstValue = value;
           hasValue = true;

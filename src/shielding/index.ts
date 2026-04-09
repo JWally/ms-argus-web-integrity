@@ -1,5 +1,5 @@
 /**
- * Resistance Detection Module
+ * Shielding Detection Module
  *
  * Detects privacy browsers, fingerprint protection modes, and anti-fingerprint extensions.
  * This module provides critical bot/fraud detection signals because:
@@ -34,7 +34,7 @@
  * detection system (src/lies) fingerprints these interceptions by hashing error
  * patterns. Each extension produces a unique hash signature across multiple APIs.
  *
- * @module resistance
+ * @module shielding
  */
 
 import { captureError } from '../errors';
@@ -56,7 +56,7 @@ import {
   TIMER_SAMPLE_COUNT,
 } from './constants';
 import type {
-  ResistanceFingerprint,
+  ShieldingFingerprint,
   BraveSecurityFeatures,
   FirefoxSecurityFeatures,
   TimerPrecisionResult,
@@ -200,7 +200,7 @@ function detectFirefoxSecurityFeatures(): FirefoxSecurityFeatures {
  * @param features - Detected Firefox security features
  * @returns 'resistFingerprinting' | 'standard' | 'safer'
  */
-function getFirefoxMode(features: FirefoxSecurityFeatures): string {
+function getFirefoxMode(features: FirefoxSecurityFeatures): ShieldingFingerprint['mode'] {
   // Check if Tor Browser (specific APIs disabled)
   const isTorBrowser =
     FIREFOX_PRIVACY_FEATURES.filter(
@@ -313,7 +313,7 @@ function buildExtensionHashPattern(
 }
 
 /**
- * Collects privacy/fingerprint resistance detection data.
+ * Collects privacy shield / fingerprint protection detection data.
  *
  * Detects:
  * - Brave browser and its protection mode (allow/standard/strict)
@@ -323,18 +323,17 @@ function buildExtensionHashPattern(
  *
  * @returns Resistance fingerprint data or undefined on error
  */
-export default async function getResistance(): Promise<
-  ResistanceFingerprint | undefined
+export default async function getShielding(): Promise<
+  ShieldingFingerprint | undefined
 > {
   try {
     const timer = createTimer();
     await queueEvent(timer);
 
-    const data: ResistanceFingerprint = {
-      privacy: undefined,
-      security: undefined,
-      mode: undefined,
-      extension: undefined,
+    const data: ShieldingFingerprint = {
+      privacy: null,
+      security: null,
+      mode: null,
       engine: IS_BLINK ? 'Blink' : IS_GECKO ? 'Gecko' : '',
     };
 
@@ -355,7 +354,7 @@ export default async function getResistance(): Promise<
           ? 'standard'
           : braveMode.strict
             ? 'strict'
-            : '';
+            : null;
     }
 
     // Firefox/Tor detection (timer precision indicates resistFingerprinting)
@@ -384,10 +383,10 @@ export default async function getResistance(): Promise<
     data.extensionHashPattern = buildExtensionHashPattern(hash);
     // data.extension is now computed server-side from extensionHashPattern
 
-    logTestResult({ time: timer.stop(), test: 'resistance', passed: true });
+    logTestResult({ time: timer.stop(), test: 'shielding', passed: true });
     return data;
   } catch (error) {
-    logTestResult({ test: 'resistance', passed: false });
+    logTestResult({ test: 'shielding', passed: false });
     captureError(error as Error);
     return undefined;
   }

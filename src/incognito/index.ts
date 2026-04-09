@@ -66,38 +66,4 @@ export async function detectIncognito(): Promise<IncognitoResult> {
   }
 }
 
-/**
- * Detect private mode from delta-pass results.
- *
- * Safari private mode adds deterministic per-page canvas noise: both
- * within-page runs produce identical noisy output, so the delta detection
- * can't strip it. Regular Safari's noise is probabilistic (varies between
- * runs), so delta successfully strips it.
- *
- * Signal: canvas reports noise (lied=true) but delta found zero differences.
- */
-export function detectPrivateFromDelta(opts: {
-  browser: string;
-  canvasLied: boolean;
-  canvasDeltaDropped: string[];
-  hasSecondRun: boolean;
-}): { isPrivate: boolean; confidence: number; signal: string } | null {
-  if (!opts.hasSecondRun) return null;
-
-  // Safari-specific: deterministic per-page noise = private mode
-  if (
-    opts.browser === 'Safari' &&
-    opts.canvasLied &&
-    opts.canvasDeltaDropped.length === 0
-  ) {
-    return {
-      isPrivate: true,
-      confidence: 0.9,
-      signal: 'safari-deterministic-canvas-noise',
-    };
-  }
-
-  return null;
-}
-
 export default detectIncognito;

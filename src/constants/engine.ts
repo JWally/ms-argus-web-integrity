@@ -2,8 +2,17 @@
  * Browser Engine Constants
  *
  * Identifies JavaScript engines by their unique error message characteristics.
- * The magic numbers come from the getEngine() function which exploits
- * engine-specific error message formatting.
+ * The magic numbers come from getEngine() in utils/engine.ts:
+ *
+ *   (-1).toFixed(-1) error message length + Array constructor string math
+ *
+ * ROT RISK: These values are derived from engine error message wording.
+ * If V8, SpiderMonkey, or JSC ever change the (-1).toFixed(-1) error message,
+ * these constants silently become wrong and IS_BLINK / IS_GECKO / IS_WEBKIT
+ * will return false for every browser. There is no automated alert for this.
+ *
+ * Monitor: periodically run getEngine() against current browser versions and
+ * verify the returned value still matches the constants below.
  *
  * @module constants/engine
  */

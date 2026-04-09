@@ -1,7 +1,5 @@
 /**
- * Console Errors Fingerprinting Types
- *
- * Type definitions for JavaScript engine error message fingerprinting.
+ * JavaScript Engine Fingerprinting Types
  */
 
 /** JavaScript engine identifiers */
@@ -11,29 +9,32 @@ export type JSEngine = 'V8' | 'SpiderMonkey' | 'JavaScriptCore' | 'unknown';
 export type LayoutEngine = 'Blink' | 'Gecko' | 'WebKit' | 'unknown';
 
 /**
- * Console errors fingerprint result.
+ * Engine fingerprint — raw behavioral signals collected client-side.
  *
- * Contains error messages from intentionally triggered JavaScript errors.
- * The exact wording varies by browser engine.
+ * SERVER-SIDE analysis expected for:
+ *   - engineMismatch: compare jsEngine vs UA header received by server
+ *   - claimedEngine: parse UA server-side (server has it in headers already)
+ *   - errors[]: validate messages against versioned expected-value table per engine
+ *   - stackFormatHash: check against whitelist of known-good hashes per engine version
+ *   - evalToStringLength / functionToStringLength: cross-validate against jsEngine
+ *     (known V8 ≈ 37, SpiderMonkey ≈ 39 — mismatch = spoofed UA)
  */
 export interface ConsoleErrorsFingerprint {
-  /** Array of error messages from triggered JavaScript errors */
+  /** Raw error messages from intentionally triggered JS errors */
   errors: string[];
-  /** Detected JavaScript engine based on behavioral tests */
+  /** Detected JS engine from behavioral tests (stack format, error messages, API presence) */
   jsEngine: JSEngine;
-  /** Detected layout engine based on behavioral tests */
+  /**
+   * Detected layout engine from CSS/DOM behavior.
+   * NOTE: Brave and privacy-focused Chromium forks remove window.chrome,
+   * causing this to report WebKit even when jsEngine=V8. Server should
+   * not treat layoutEngine=WebKit + jsEngine=V8 as a hard mismatch signal.
+   */
   layoutEngine: LayoutEngine;
-  /** Engine expected from User-Agent string */
-  claimedEngine: {
-    js: JSEngine;
-    layout: LayoutEngine;
-  };
-  /** True if detected engine doesn't match User-Agent claim */
-  engineMismatch: boolean;
-  /** Hash of the stack trace format pattern (normalized) */
+  /** Hash of normalized stack trace structure — varies by engine, stable across versions */
   stackFormatHash: string;
-  /** Length of eval.toString() — varies by engine */
+  /** eval.toString().length — constant per engine, cross-validate server-side */
   evalToStringLength: number;
-  /** Length of Function.toString.call(eval) — varies by engine */
+  /** Function.toString.call(eval).length — constant per engine, cross-validate server-side */
   functionToStringLength: number;
 }

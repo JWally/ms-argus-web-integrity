@@ -9,11 +9,10 @@ import getConsoleErrors from './engine';
 import { getCapturedErrors } from './errors';
 import getHeadlessFeatures from './headless';
 import detectIncognito from './incognito';
-import { analyzeInconsistencies } from './inconsistencies';
 import getIntl from './intl';
 import { getLies, PARENT_PHANTOM } from './lies';
 import getNavigator from './navigator';
-import getResistance from './resistance';
+import getShielding from './shielding';
 import getScreen from './screen';
 import { getStatus } from './status';
 import getTimezone from './timezone';
@@ -32,8 +31,7 @@ export interface IntegrityResult {
   headless: Awaited<ReturnType<typeof getHeadlessFeatures>>;
   lies: ReturnType<typeof getLies>;
   trash: ReturnType<typeof getTrash>;
-  resistance: Awaited<ReturnType<typeof getResistance>>;
-  inconsistencies: ReturnType<typeof analyzeInconsistencies>;
+  shielding: Awaited<ReturnType<typeof getShielding>>;
   incognito: Awaited<ReturnType<typeof detectIncognito>> | undefined;
   intl: Awaited<ReturnType<typeof getIntl>>;
   navigator: Awaited<ReturnType<typeof getNavigator>>;
@@ -63,7 +61,7 @@ export async function collectIntegrity(): Promise<IntegrityResult> {
 
   // Parallel async checks (worker-independent)
   const [
-    resistance,
+    shielding,
     incognito,
     intl,
     status,
@@ -72,7 +70,7 @@ export async function collectIntegrity(): Promise<IntegrityResult> {
     webrtc,
     workerScope,
   ] = await Promise.all([
-    getResistance().catch(() => undefined),
+    getShielding().catch(() => undefined),
     detectIncognito().catch(() => undefined),
     getIntl().catch(() => undefined),
     getStatus().catch(() => undefined),
@@ -91,16 +89,6 @@ export async function collectIntegrity(): Promise<IntegrityResult> {
     getScreen().catch(() => undefined),
   ]);
 
-  // Inconsistencies need the other results to cross-validate
-  const inconsistencies = analyzeInconsistencies({
-    navigator: navigatorData,
-    screen,
-    cssMedia,
-    timezone,
-    intl,
-    workerScope: bestScope,
-  });
-
   // Cleanup phantom iframe used by lie detection
   if (PARENT_PHANTOM?.parentNode) {
     PARENT_PHANTOM.parentNode.removeChild(PARENT_PHANTOM);
@@ -115,8 +103,7 @@ export async function collectIntegrity(): Promise<IntegrityResult> {
     headless,
     lies,
     trash,
-    resistance,
-    inconsistencies,
+    shielding,
     incognito,
     intl,
     navigator: navigatorData,

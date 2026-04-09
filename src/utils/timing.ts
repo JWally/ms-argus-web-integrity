@@ -93,17 +93,9 @@ export function createPerformanceLogger(): PerformanceLogger {
   const log: Record<string, string> = {};
   let total = 0;
   return {
-    logTestResult: ({ test, passed, time = 0 }: TestResult) => {
+    logTestResult: ({ test, time = 0 }: TestResult) => {
       total += time;
-      const timeString = `${time.toFixed(2)}ms`;
-      log[test] = timeString;
-      const color = passed ? '#4cca9f' : 'lightcoral';
-      const result = passed ? 'passed' : 'failed';
-      const symbol = passed ? '✔' : '-';
-      return console.log(
-        `%c${symbol}${time ? ` (${timeString})` : ''} ${test} ${result}`,
-        `color:${color}`,
-      );
+      log[test] = `${time.toFixed(2)}ms`;
     },
     getLog: () => log,
     getTotal: () => total,

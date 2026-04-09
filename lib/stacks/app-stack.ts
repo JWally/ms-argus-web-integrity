@@ -40,8 +40,8 @@ export class TheStack extends cdk.Stack {
     const stageLower = stage.toLowerCase();
     const customDomain =
       stageLower === 'prod'
-        ? `static.${siteDomain}`
-        : `static-${stageLower}.${siteDomain}`;
+        ? `static-integrity.${siteDomain}`
+        : `static-integrity-${stageLower}.${siteDomain}`;
     const site = new StaticSiteConstruct(this, constructName, {
       customDomain,
       rootDomain: siteDomain,

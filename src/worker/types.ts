@@ -82,6 +82,10 @@ export interface WorkerScopeFingerprint {
   webglRenderer: string;
   /** WebGL vendor string */
   webglVendor: string;
+  /** WebGL2 renderer string (Chrome 69+, Firefox 105+, Safari 17+) */
+  webgl2Renderer?: string;
+  /** WebGL2 vendor string (Chrome 69+, Firefox 105+, Safari 17+) */
+  webgl2Vendor?: string;
   /** GPU confidence and compression info */
   gpu: WorkerGPUInfo;
   /** Whether user agent shows post-reduction format */

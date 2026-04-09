@@ -1,252 +1,123 @@
 /**
- * Headless Detection Types
- *
- * Type definitions for headless browser and bot detection.
+ * Headless Browser Detection Types
  */
 
 /**
- * Signals that suggest a headless browser environment.
- *
- * These aren't definitive proof of headless operation but are
- * commonly seen in headless configurations. A high count of
- * true values increases the likelihood of bot activity.
+ * Soft signals suggesting headless operation.
+ * Any single signal is inconclusive — weight combinations server-side.
  */
 export interface LikeHeadlessSignals {
-  /**
-   * Chrome browser without the `chrome` global object.
-   * Real Chrome always has window.chrome, headless often doesn't.
-   */
+  /** IS_BLINK && window.chrome missing — headless often lacks the chrome global */
   noChrome: boolean;
-
-  /**
-   * Permissions API reports "prompt" but Notification.permission is "denied".
-   * This inconsistency occurs in some headless configurations.
-   */
+  /** permissions.query('notifications') = prompt but Notification.permission = denied */
   hasPermissionsBug: boolean;
-
-  /**
-   * No browser plugins detected.
-   * Real browsers usually have at least PDF viewer plugin.
-   */
+  /** IS_BLINK && navigator.plugins.length === 0 — real Chrome has at least PDF viewer */
   noPlugins: boolean;
-
-  /**
-   * No MIME types registered.
-   * Real browsers have MIME type handlers for common formats.
-   */
+  /** IS_BLINK && navigator.mimeTypes empty — real browsers register MIME handlers */
   noMimeTypes: boolean;
-
-  /**
-   * Notifications are denied by default.
-   * Headless browsers often block notifications entirely.
-   */
+  /** IS_BLINK && Notification.permission === 'denied' — headless blocks notifications */
   notificationIsDenied: boolean;
-
-  /**
-   * ActiveText CSS color resolves to red.
-   * In headless Chrome, ActiveText = rgb(255, 0, 0) instead of system color.
-   */
-  hasKnownBgColor: boolean;
-
-  /**
-   * Light color scheme is preferred.
-   * Headless browsers often default to light mode.
-   */
-  prefersLightColor: boolean;
-
-  /**
-   * User-Agent Client Hints has empty platform.
-   * Indicates incomplete UA data implementation.
-   */
+  /** userAgentData.platform is empty — incomplete UA-CH implementation */
   uaDataIsBlank: boolean;
-
-  /**
-   * PDF viewer is disabled.
-   * Chrome's built-in PDF viewer is usually enabled in real browsers.
-   */
+  /** navigator.pdfViewerEnabled === false — Chrome's built-in PDF viewer disabled */
   pdfIsDisabled: boolean;
-
-  /**
-   * Screen height equals available height (no taskbar).
-   * Real OS always reserves space for taskbar/dock.
-   */
+  /** screen.width === screen.availWidth && screen.height === screen.availHeight — no taskbar */
   noTaskbar: boolean;
-
-  /**
-   * Viewport exactly matches screen dimensions.
-   * Suggests a configured viewport rather than real screen.
-   */
+  /** viewport exactly matches screen dimensions — configured virtual display */
   hasVvpScreenRes: boolean;
-
   /**
-   * SwiftShader software renderer detected.
-   * Used by headless Chrome when no GPU is available.
+   * Software renderer detected in WebGL renderer string.
+   * Covers: SwiftShader (old + new headless), llvmpipe (Linux Mesa),
+   * VMware SVGA, Microsoft Basic Render Driver.
+   * NOTE: New headless Chrome on a real GPU uses the real renderer — this
+   * only fires on machines without GPU pass-through.
    */
-  hasSwiftShader: boolean;
-
-  /**
-   * Web Share API not available.
-   * Should be present in Chrome 89+ desktop.
-   */
-  noWebShare: boolean;
-
-  /**
-   * Content Index API not available (Android-only API).
-   * Missing on desktop but present on real Android.
-   */
-  noContentIndex: boolean;
-
-  /**
-   * Contacts Manager API not available (Android-only API).
-   * Missing on desktop but present on real Android.
-   */
-  noContactsManager: boolean;
-
-  /**
-   * Network Information downlinkMax not available.
-   * Present on Android/Chrome OS, missing elsewhere.
-   */
-  noDownlinkMax: boolean;
-
-  /**
-   * Developer tools appear to be open.
-   * Detected via window size discrepancy or console getter probe.
-   */
+  hasSoftwareRenderer: boolean;
+  /** DevTools window size heuristic or Firebug detected */
   devToolsOpen: boolean;
 }
 
 /**
- * Definitive headless browser indicators.
- *
- * These signals are strong evidence of headless operation.
- * Any true value here should raise a red flag.
+ * Hard headless indicators — any true value is strong evidence of automation.
  */
 export interface HeadlessSignals {
-  /**
-   * WebDriver property is enabled or was tampered with.
-   * navigator.webdriver = true indicates automated control.
-   */
+  /** navigator.webdriver === true, or undefined on modern Chrome (should be false), or lieProps tampered */
   webDriverIsOn: boolean;
-
-  /**
-   * User agent contains "HeadlessChrome".
-   * Direct admission of headless operation.
-   */
+  /** "HeadlessChrome" in navigator.userAgent or navigator.appVersion */
   hasHeadlessUA: boolean;
-
-  /**
-   * Worker user agent contains "HeadlessChrome".
-   * Some stealth tools miss the worker context.
-   */
+  /** "HeadlessChrome" in worker userAgent — stealth tools often miss the worker context */
   hasHeadlessWorkerUA: boolean;
 }
 
 /**
- * Stealth plugin detection signals.
- *
- * These detect tools like puppeteer-extra-plugin-stealth that try
- * to hide automation. The presence of these signals indicates
- * intentional evasion of bot detection.
+ * Stealth plugin / evasion tool signals.
+ * These indicate intentional bot detection bypass attempts.
  */
 export interface StealthSignals {
-  /**
-   * Iframe contentWindow is accessible before DOM insertion.
-   * Stealth plugins may proxy iframe creation.
-   */
+  /** iframe.contentWindow accessible before DOM insertion — proxied iframe creation */
   hasIframeProxy: boolean;
-
-  /**
-   * Chrome object appears late in window property list.
-   * Stealth plugins add chrome object after page load.
-   */
+  /** chrome object appears in last 50 window properties — added after page load by stealth plugin */
   hasHighChromeIndex: boolean;
-
-  /**
-   * Chrome runtime has improper prototype chain.
-   * Stealth plugins incorrectly implement chrome.runtime.
-   */
+  /** chrome.runtime.sendMessage/connect has prototype or is constructable — fake runtime */
   hasBadChromeRuntime: boolean;
-
-  /**
-   * Function.toString has been tampered with.
-   * Used to hide injected code from detection.
-   */
+  /** Function.toString has been patched — lieProps detection */
   hasToStringProxy: boolean;
-
-  /**
-   * WebGL renderer differs between main thread and worker.
-   * Indicates selective GPU spoofing.
-   */
+  /** WebGL renderer differs between main thread and worker — selective GPU spoofing */
   hasBadWebGL: boolean;
+  /**
+   * chrome exists but chrome.loadTimes is missing.
+   * Real Chrome always has chrome.loadTimes (deprecated but present).
+   * Stealth plugins add window.chrome but routinely omit this.
+   *
+   * SERVER-SIDE NOTE: chrome.loadTimes is deprecated — validate against
+   * the Chrome version before treating absence as a hard signal. If Google
+   * removes it, this will fire for all real Chrome users.
+   */
+  missingLoadTimes: boolean;
+  /**
+   * chrome exists but chrome.csi is missing.
+   * Same pattern as missingLoadTimes — deprecated but always present in real Chrome.
+   *
+   * SERVER-SIDE NOTE: same caveat as missingLoadTimes re: deprecation.
+   */
+  missingCsi: boolean;
+  /**
+   * chrome exists but chrome.app surface is incomplete.
+   * Real Chrome always has chrome.app.isInstalled, getDetails, runningState.
+   * Stealth plugins that add chrome.runtime typically skip chrome.app.
+   *
+   * SERVER-SIDE NOTE: chrome.app is tied to deprecated Chrome Apps API.
+   * Validate against Chrome version — removal would invert this signal.
+   */
+  incompleteAppSurface: boolean;
 }
 
 /**
  * CDP / automation framework detection signals.
- *
- * Detects Chrome DevTools Protocol markers, automation tool globals,
- * and cross-realm API tampering. These catch modern evasion tools
- * (puppeteer-stealth, Patchright, Camoufox) that bypass basic checks.
  */
 export interface CdpSignals {
-  /** ChromeDriver `$cdc_` globals found on document */
+  /** ChromeDriver $cdc_ globals on document */
   cdcGlobals: boolean;
-
-  /** Playwright `__pw_` bindings found on window */
+  /** Playwright __pw_ bindings on window */
   pwBindings: boolean;
-
   /** navigator.webdriver differs between main frame and phantom iframe */
   phantomMismatch: boolean;
-
   /** Bot-injected globals matching known patterns (max 5) */
   clientLitter: string[];
-
-  /** Automation framework globals found (playwright, puppeteer, etc.) */
+  /** Known automation framework globals found */
   automationGlobals: string[];
-
-  /**
-   * APIs where cross-realm toString disagrees with main frame.
-   * Indicates addInitScript-based API patching.
-   */
+  /** APIs where cross-realm toString disagrees with main frame — addInitScript patching */
   crossRealmTampered: string[];
 }
 
-/**
- * Platform confidence scores.
- *
- * Each platform gets a score from 0-1 based on how many
- * expected features are present. Higher scores indicate
- * better match with that platform's expected capabilities.
- */
 export type PlatformScores = Record<string, number>;
 
-/**
- * Platform estimate result.
- *
- * Used to validate that the detected platform matches
- * the available APIs and features.
- */
-export interface PlatformEstimate {
-  /** Platform confidence scores */
-  scores: PlatformScores;
-  /** Highest confidence score achieved */
-  highestScore: number;
-  /** Platform with highest score */
-  platform?: string;
-}
-
-/**
- * Headless feature detection inputs.
- *
- * External data needed for comprehensive headless detection.
- */
 export interface HeadlessDetectionInputs {
-  /** WebGL fingerprint data including GPU renderer */
   webgl?: {
     parameters?: {
       UNMASKED_RENDERER_WEBGL?: string;
     };
   };
-  /** Worker scope data including user agent and WebGL info */
   workerScope?: {
     userAgent?: string;
     webglRenderer?: string;
@@ -257,33 +128,33 @@ export interface HeadlessDetectionInputs {
  * Complete headless detection result.
  */
 export interface HeadlessFingerprint {
-  /** Whether this is a Chromium-based browser */
+  /** Chromium-based browser */
   chromium: boolean;
-
-  /** Signals suggesting headless operation */
+  /** Soft headless indicators */
   likeHeadless: LikeHeadlessSignals;
-
-  /** Definitive headless indicators */
+  /** Hard headless indicators */
   headless: HeadlessSignals;
-
-  /** Stealth plugin detection signals */
+  /** Stealth/evasion signals */
   stealth: StealthSignals;
-
-  /** CDP / automation framework detection signals */
+  /** CDP / automation framework signals */
   cdp: CdpSignals;
-
-  /** Percentage of likeHeadless signals that are true (0-100) */
+  /** % of likeHeadless signals that are true */
   likeHeadlessRating: number;
-
-  /** Percentage of headless signals that are true (0-100) */
+  /** % of headless signals that are true */
   headlessRating: number;
-
-  /** Percentage of stealth signals that are true (0-100) */
+  /** % of stealth signals that are true */
   stealthRating: number;
-
-  /** System fonts resolved from CSS keywords */
+  /** Resolved CSS system font string — OS inference (Gecko only; Blink returns generic names) */
   systemFonts: string;
-
-  /** Platform confidence estimation */
+  /** Platform feature confidence scores */
   platformEstimate: [PlatformScores, number];
+  /**
+   * Raw history.length value.
+   *
+   * SERVER-SIDE: flag === 1 in context of referrer chain, navigation timing,
+   * and session data. Bots using page.goto() consistently produce length 1,
+   * but so do real users arriving via direct link / email / bookmark.
+   * Not meaningful in isolation — only signal in combination.
+   */
+  historyLength: number;
 }

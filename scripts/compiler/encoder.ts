@@ -9,6 +9,11 @@ export function encode(mod: BytecodeModule): ArrayBuffer {
   // Header: magic(4) + version(2) + flags(2) = 8
   size += 8;
 
+  // v2+: opcode map (256 bytes)
+  if (mod.opcodeMap) {
+    size += 256;
+  }
+
   // Strings: count(4) + for each: length(2) + utf8 bytes
   size += 4;
   const encodedStrings: Uint8Array[] = [];
@@ -39,6 +44,12 @@ export function encode(mod: BytecodeModule): ArrayBuffer {
   offset += 2;
   view.setUint16(offset, mod.flags);
   offset += 2;
+
+  // v2+: opcode map (256 bytes, reverse mapping: randomized → canonical)
+  if (mod.opcodeMap) {
+    new Uint8Array(buffer, offset, 256).set(mod.opcodeMap);
+    offset += 256;
+  }
 
   // Strings
   view.setUint32(offset, mod.strings.length);

@@ -639,6 +639,19 @@ export class CodeGenerator {
         return dst;
       }
 
+      // String.fromCharCode(x)
+      if (
+        obj.type === 'Identifier' &&
+        (obj as { name: string }).name === 'String' &&
+        prop.type === 'Identifier' &&
+        (prop as { name: string }).name === 'fromCharCode'
+      ) {
+        const argReg = this.compileExpression(args[0]);
+        this.emit(Op.FROM_CHAR_CODE, dst, argReg);
+        this.freeTemp(argReg);
+        return dst;
+      }
+
       // String/Array method calls: obj.method(args)
       if (prop.type === 'Identifier') {
         const methodName = (prop as { name: string }).name;
@@ -693,7 +706,7 @@ export class CodeGenerator {
       toLowerCase: Op.STR_TO_LOWER,
       toUpperCase: Op.STR_TO_UPPER,
       toString: Op.TO_STRING,
-      charAt: Op.STR_CHAR_AT,
+      charCodeAt: Op.CHAR_CODE_AT,
       // Array methods
       push: Op.ARR_PUSH,
     };

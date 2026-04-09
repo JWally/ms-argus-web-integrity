@@ -61,6 +61,8 @@ export const Op = {
   // === String (0x70-0x7F) ===
   STR_CONCAT: 0x70,
   STR_INCLUDES: 0x71,
+  CHAR_CODE_AT: 0x72,    // dst = str.charCodeAt(index)
+  FROM_CHAR_CODE: 0x73,  // dst = String.fromCharCode(code)
   TO_STRING: 0x75,
 
   // === Utility (0x80-0x8F) ===

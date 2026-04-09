@@ -7,11 +7,23 @@ import { MiniVM, VMStatus, isFuncObj } from './vm';
 import type { CallFrame, FuncObj } from './vm';
 import type { ApiBridge } from './bridge';
 
-const MAX_INSTRUCTIONS = 500_000;
+const MAX_INSTRUCTIONS = 2_000_000;
 
 export interface ExecutionResult {
   value: unknown;
   instructionsExecuted: number;
+}
+
+/**
+ * Build the reverse opcode lookup: randomized → canonical.
+ * If no opcodeMap is present (v1 bytecode), returns identity mapping.
+ */
+function buildReverseLookup(module: BytecodeModule): Uint8Array {
+  if (module.opcodeMap) return module.opcodeMap;
+  // v1 fallback: identity mapping
+  const identity = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) identity[i] = i;
+  return identity;
 }
 
 export function execute(
@@ -57,13 +69,15 @@ type R = any;
 function run(vm: MiniVM): ExecutionResult {
   const { registers: reg, module } = vm;
   const { code, strings, numbers, apiTable } = module;
+  const rmap = buildReverseLookup(module);
   let ic = 0;
 
   while (vm.status === VMStatus.RUNNING && vm.pc < code.length) {
     if (++ic > MAX_INSTRUCTIONS) throw new Error('Execution limit exceeded');
 
     const word = code[vm.pc];
-    const { opcode, dst, src1, src2 } = decodeInstruction(word);
+    const { opcode: rawOp, dst, src1, src2 } = decodeInstruction(word);
+    const opcode = rmap[rawOp]; // de-randomize
 
     let operand = 0;
     if (hasOperand(opcode)) {
@@ -94,13 +108,15 @@ function run(vm: MiniVM): ExecutionResult {
 async function runAsync(vm: MiniVM): Promise<ExecutionResult> {
   const { registers: reg, module } = vm;
   const { code, strings, numbers, apiTable } = module;
+  const rmap = buildReverseLookup(module);
   let ic = 0;
 
   while (vm.status === VMStatus.RUNNING && vm.pc < code.length) {
     if (++ic > MAX_INSTRUCTIONS) throw new Error('Execution limit exceeded');
 
     const word = code[vm.pc];
-    const { opcode, dst, src1, src2 } = decodeInstruction(word);
+    const { opcode: rawOp, dst, src1, src2 } = decodeInstruction(word);
+    const opcode = rmap[rawOp]; // de-randomize
 
     let operand = 0;
     if (hasOperand(opcode)) {
@@ -372,6 +388,14 @@ function dispatch(
       break;
     case Op.STR_INCLUDES:
       reg[dst] = (reg[src1] as string).includes(reg[src2] as string);
+      vm.pc += 1;
+      break;
+    case Op.CHAR_CODE_AT:
+      reg[dst] = (reg[src1] as string).charCodeAt(reg[src2] as number);
+      vm.pc += 1;
+      break;
+    case Op.FROM_CHAR_CODE:
+      reg[dst] = String.fromCharCode(reg[src1] as number);
       vm.pc += 1;
       break;
     case Op.TO_STRING:

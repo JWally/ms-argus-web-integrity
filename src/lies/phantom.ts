@@ -94,56 +94,26 @@ export function getPhantomIframe(
 
   try {
     const { document: doc, self: win } = domContext;
+    const numberOfIframes = win.length;
 
-    // Create a host element for the Shadow DOM
-    const shadowHost = doc.createElement('div');
-    shadowHost.id = getRandomValues();
+    // Plain DOM approach (matches CreepJS) — closed Shadow DOM creates a
+    // cross-realm context that causes Function.toString to fail in Blink,
+    // which cascades into detectProxies=true and 278 false-positive lies.
+    const div = doc.createElement('div');
+    div.setAttribute('id', getRandomValues());
+    div.setAttribute('style', GHOST_STYLES);
+    div.innerHTML = `<div><iframe></iframe></div>`;
+    doc.body.appendChild(div);
 
-    // Hide the container from layout and user interaction
-    Object.assign(shadowHost.style, {
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '0',
-      height: '0',
-      opacity: '0',
-      pointerEvents: 'none',
-      zIndex: '-1',
-    });
-
-    // Attach shadow root in "closed" mode - prevents external script access
-    const shadowRoot = shadowHost.attachShadow({ mode: 'closed' });
-
-    // Create iframe container
-    const iframeContainer = doc.createElement('div');
-    Object.assign(iframeContainer.style, {
-      width: '1px',
-      height: '1px',
-    });
-
-    // Create the actual iframe for an isolated Window context
-    const iframe = doc.createElement('iframe');
-    Object.assign(iframe.style, {
-      width: '100%',
-      height: '100%',
-      border: 'none',
-    });
-
-    // Append iframe to container, container to shadow DOM
-    iframeContainer.appendChild(iframe);
-    shadowRoot.appendChild(iframeContainer);
-
-    // Attach the host to the document
-    doc.documentElement.appendChild(shadowHost);
-
-    // Get the iframe's window and optionally nest further with Behemoth
-    const iframeWindow = iframe.contentWindow;
-    const phantomWindow = iframeWindow ? getBehemothIframe(iframeWindow) : null;
+    const iframeWindow = win[numberOfIframes];
+    const phantomWindow = iframeWindow
+      ? getBehemothIframe(iframeWindow)
+      : null;
 
     return {
       iframeWindow: (phantomWindow || iframeWindow || win) as Window &
         typeof globalThis,
-      div: shadowHost,
+      div,
     };
   } catch (error) {
     captureError(error as Error, 'client blocked phantom iframe');

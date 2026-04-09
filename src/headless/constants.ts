@@ -92,11 +92,15 @@ export const HEADLESS_UA_PATTERNS = [
 ] as const;
 
 /**
- * Known headless ActiveText CSS color.
+ * Known headless ActiveText CSS color (LEGACY / STALE).
  *
- * In headless Chrome, the CSS color "ActiveText" resolves to
- * red (rgb(255, 0, 0)) instead of the system's actual active
- * text color. This is a reliable headless indicator.
+ * In old headless Chrome (<112), "ActiveText" resolved to red (rgb(255, 0, 0)).
+ * Chrome 112 introduced a new headless mode (now default) that uses the full
+ * rendering pipeline — it resolves ActiveText correctly. Only --headless=old
+ * still returns red. Kept for reference and test compatibility; do not use
+ * for active detection.
+ *
+ * @deprecated Catches --headless=old only. Modern Puppeteer/Playwright pass this check.
  */
 export const HEADLESS_ACTIVE_TEXT_COLOR = 'rgb(255, 0, 0)';
 

@@ -1,5 +1,5 @@
 /**
- * Resistance Detection Constants
+ * Shielding Detection Constants
  *
  * Configuration for detecting privacy browsers and fingerprint protection modes.
  *

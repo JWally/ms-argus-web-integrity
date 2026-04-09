@@ -96,6 +96,9 @@ export const BridgeApi = {
   // ── CSS Media cross-validation ─────────────────────────────────
   CSS_MEDIA_COLLECT: 0x1d, // sync: runs getCSSMedia(), returns flat normalized object | null
 
+  // ── Session token for inner XOR scramble ──────────────────────
+  GET_SESSION_TOKEN: 0x1e, // returns ctx.sessionToken (sent as X-Argus-Session header)
+
   // ── Async ECDH APIs (called via API_CALL_ASYNC) ────────────────
   ECDH_GENERATE_KEY: 0x30,
   ECDH_EXPORT_RAW: 0x31,
@@ -705,6 +708,14 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         reportedW: window.screen.width,
       };
     },
+  });
+
+  // 0x1e: session token — used as part of the inner XOR scramble key.
+  // The VM builds xorKey = sessionToken + deploySecret inside bytecode,
+  // then XOR-scrambles the JSON before passing to ECDH encrypt.
+  // Server reverses with X-Argus-Session header + INTEGRITY_DEPLOY_SECRET env var.
+  bridge.register(BridgeApi.GET_SESSION_TOKEN, {
+    get: () => ctx.sessionToken,
   });
 
   // 0x43: POST encrypted payload to /v1/collect — returns session_id or empty string

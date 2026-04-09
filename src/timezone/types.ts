@@ -24,11 +24,8 @@ export interface TimezoneFingerprint {
   zone: string;
 
   /**
-   * Human-readable location from Intl.DateTimeFormat.resolvedOptions().
-   * Example: "America, Los Angeles"
-   *
-   * This is the IANA timezone identifier with underscores replaced by
-   * spaces and slashes replaced by commas.
+   * Raw IANA timezone identifier from Intl.DateTimeFormat.resolvedOptions().
+   * Example: "America/Los_Angeles"
    */
   location: string;
 

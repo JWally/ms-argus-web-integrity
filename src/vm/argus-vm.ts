@@ -23,7 +23,6 @@ import {
 import type { IntegrityResult } from '../integrity';
 import type { EvercookieData } from '../utils/evercookie';
 import type { CryptoKeys } from '../utils/get-crypto-id';
-import { buildPayload } from '../telemetry/payload';
 
 let bytecodeCache: { bytecode: string; key: string; secret: string } | null =
   null;
@@ -153,9 +152,6 @@ export interface ArgusVmResult {
   vmHash: string;
   vm: {
     timezone?: VmTimezone;
-    workerScope?: Record<string, unknown>;
-    webrtc?: Record<string, unknown> | null;
-    cssMedia?: Record<string, unknown> | null;
   };
 }
 
@@ -192,18 +188,21 @@ export async function runArgusVm(
 
   if (prefetched) {
     const result = await prefetched;
-    if (!result) return fallback;
+    if (!result) { console.warn('[argus-vm] prefetch slot resolved to null'); return fallback; }
     modules = result.modules;
     handshake = result.handshake;
+    console.log('[argus-vm] prefetch consumed, pubkey length:', handshake.serverPubKey.length);
   } else {
     // No prefetch slot — start fresh. Without sigintConfig there's no way
     // to obtain the server ECDH pubkey, so fail fast.
-    if (!sigintConfig) return fallback;
+    if (!sigintConfig) { console.warn('[argus-vm] no prefetch slot and no sigintConfig'); return fallback; }
+    console.log('[argus-vm] starting fresh prefetch');
     const result = await prefetchArgusVm(sigintConfig);
     _prefetchSlot = null;
-    if (!result) return fallback;
+    if (!result) { console.warn('[argus-vm] fresh prefetch returned null'); return fallback; }
     modules = result.modules;
     handshake = result.handshake;
+    console.log('[argus-vm] fresh prefetch done, pubkey length:', handshake.serverPubKey.length);
   }
 
   try {
@@ -215,25 +214,40 @@ export async function runArgusVm(
     let immolateSignals: string[] | null = null;
     const ctx: ArgusVmContext = {
       getPayload: () => {
-        return buildPayload(
-          {
-            fingerprint,
-            evercookie: evercookieData ?? undefined,
-            cryptoId: cryptoIdData ?? undefined,
+        return {
+          identifiers: {
+            session_id: crypto.randomUUID(),
           },
-          crypto.randomUUID(),
-        ) as unknown as Record<string, unknown>;
+          device: {
+            engine: fingerprint.engine,
+            headless: fingerprint.headless,
+            lies: fingerprint.lies,
+            trash: fingerprint.trash,
+            shielding: fingerprint.shielding,
+            incognito: fingerprint.incognito,
+            intl: fingerprint.intl,
+            navigator: fingerprint.navigator,
+            screen: fingerprint.screen,
+            status: fingerprint.status,
+            timezone: fingerprint.timezone,
+            timing: fingerprint.timing,
+            cssMedia: fingerprint.cssMedia,
+            webrtc: fingerprint.webrtc,
+            workerScope: fingerprint.workerScope,
+            errors: fingerprint.errors,
+          },
+          meta: fingerprint.meta,
+        } as unknown as Record<string, unknown>;
       },
-      getStableHash: () => (fingerprint as any).hashes?.stable ?? '',
+      getStableHash: () => '',
       getServerPubKey: () => handshake.serverPubKey,
       onImmolate: (signals) => {
         immolateSignals = signals;
       },
       sigintConfig,
-      apiEndpoint: `${apiBase}/v1/collect`,
+      apiEndpoint: `${apiBase}/v1/integrity-collect`,
       sessionToken: handshake.sessionToken,
       h2Promise: _prefetchH2Slot ?? undefined,
-      cssMedia: fingerprint.cssMedia ?? null,
     };
     const bridge = createArgusVmBridge(ctx);
 
@@ -259,7 +273,8 @@ export async function runArgusVm(
       vmHash: vmResult.hash,
       vm: vmResult.vm ?? {},
     };
-  } catch {
+  } catch (err) {
+    console.warn('[argus-vm] runArgusVm failed:', err);
     return fallback;
   }
 }
@@ -284,19 +299,12 @@ export async function runVmDetection(
     const mod = decode(binary.buffer as ArrayBuffer);
 
     const ctx: ArgusVmContext = {
-      getPayload: () =>
-        fingerprint
-          ? (buildPayload(
-              { fingerprint },
-              crypto.randomUUID(),
-            ) as unknown as Record<string, unknown>)
-          : {},
-      getStableHash: () => (fingerprint as any)?.hashes?.stable ?? '',
+      getPayload: () => ({}),
+      getStableHash: () => '',
       getServerPubKey: () => '', // no server key — skips ECDH + POST in bytecode
       onImmolate: () => {},
       apiEndpoint: '',
       sessionToken: '',
-      cssMedia: fingerprint?.cssMedia ?? null,
     };
 
     const bridge = createArgusVmBridge(ctx);

@@ -1,7 +1,7 @@
 /**
- * Resistance Detection Types
+ * Shielding Detection Types
  *
- * Type definitions for privacy/fingerprint resistance detection.
+ * Type definitions for privacy shield / fingerprint protection detection.
  */
 
 /**
@@ -74,23 +74,25 @@ export interface LieHashValues {
 }
 
 /**
- * Resistance detection fingerprint result.
+ * Shielding fingerprint result.
+ *
+ * Classifies the privacy posture and shielding tooling of the client:
+ * which browser, which protection mode, which extension (server-side).
+ * Used to contextualize other signals — e.g. screen lies in Brave strict
+ * are expected noise; the same signal in plain Chrome is a hard bot indicator.
  */
-export interface ResistanceFingerprint {
-  /** Detected privacy tool/browser: 'Brave' | 'Tor Browser' | 'Firefox' */
-  privacy: string | undefined;
-  /** Detected security features */
-  security: BraveSecurityFeatures | FirefoxSecurityFeatures | undefined;
-  /** Privacy mode: 'allow' | 'standard' | 'strict' | 'safer' | 'resistFingerprinting' */
-  mode: string | undefined;
-  /**
-   * Detected fingerprint resistance extension.
-   * NOTE: Now computed server-side from extensionHashPattern.
-   * Client always sets this to undefined.
-   */
-  extension: string | undefined;
+export interface ShieldingFingerprint {
+  /** Detected privacy browser: 'Brave' | 'Tor Browser' | 'Firefox' — null if none detected */
+  privacy: 'Brave' | 'Tor Browser' | 'Firefox' | null;
+  /** Detected security features — null if no privacy tool detected */
+  security: BraveSecurityFeatures | FirefoxSecurityFeatures | null;
+  /** Protection mode — null if no privacy tool detected */
+  mode: 'allow' | 'standard' | 'strict' | 'safer' | 'resistFingerprinting' | null;
   /** JS engine: 'Blink' | 'Gecko' */
   engine: string;
-  /** Hash pattern for server-side extension detection */
+  /**
+   * Lie hash pattern across ~29 APIs — sent to server for extension identification.
+   * Each extension (CanvasBlocker, JShelter, etc.) produces a unique hash signature.
+   */
   extensionHashPattern?: Record<string, string>;
 }

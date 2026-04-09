@@ -301,11 +301,14 @@ export function queryLies(
         }),
 
       // Test 25: instanceof checks have different stack traces for proxies (Blink)
+      // NOTE: Bare `x instanceof x` is stripped by Terser as side-effect-free.
+      // Assigning to a const that's referenced in a throw keeps it alive.
       ['failed at instanceof check error']:
         isBlink &&
         (failsTypeError({
           spawnErr: () => {
-            apiFunction instanceof apiFunction;
+            const r = apiFunction instanceof apiFunction;
+            if (r) throw r;
           },
           withStack: (err) =>
             !hasValidStack(err, STACK_TRACE_PATTERNS.FUNCTION_INSTANCE),
@@ -313,7 +316,8 @@ export function queryLies(
           failsTypeError({
             spawnErr: () => {
               const proxy = new Proxy(apiFunction, {});
-              proxy instanceof proxy;
+              const r = proxy instanceof proxy;
+              if (r) throw r;
             },
             withStack: (err) =>
               !hasValidStack(err, STACK_TRACE_PATTERNS.PROXY_INSTANCE),

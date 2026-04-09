@@ -1,7 +1,7 @@
 /** Mini VM bytecode format constants */
 
 export const MAGIC = 0x41424d56; // "ABMV" — Argus Bio Mini VM
-export const VERSION = 1;
+export const VERSION = 2; // v2: randomized opcode mapping
 
 /**
  * Instruction encoding:

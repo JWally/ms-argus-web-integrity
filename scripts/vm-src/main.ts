@@ -248,13 +248,29 @@ if (serverPubKey.length > 0) {
   );
 
   if (payloadJSON.length > 0) {
+    // ── XOR scramble payload before ECDH encryption ──────────────
+    // Key = sessionToken (from bridge, sent as X-Argus-Session) + deploy secret.
+    // Runs inside VM bytecode so hooking the ECDH bridge call only sees garbage.
+    // Server reverses with X-Argus-Session header + INTEGRITY_DEPLOY_SECRET env var.
+    let xorKey = __api_get(0x1e) + '__DEPLOY_SECRET__';
+    let scrambled = '';
+    i = 0;
+    while (i < payloadJSON.length) {
+      scrambled = scrambled + String.fromCharCode(
+        payloadJSON.charCodeAt(i) ^ xorKey.charCodeAt(i % xorKey.length)
+      );
+      i = i + 1;
+    }
+    xorKey = 0;
+
     // Encrypt with ECDH+HKDF+AES-GCM → Uint8Array [iv | ciphertext+tag]
     let encrypted = __api_call_async(
       0x32,
       tmp.privateKey,
       serverPubKey,
-      payloadJSON,
+      scrambled,
     );
+    scrambled = 0;
     // POST octet-stream to /v1/collect → session_id
     sessionId = __api_call_async(0x43, encrypted, publicKeyB64);
     encrypted = 0;

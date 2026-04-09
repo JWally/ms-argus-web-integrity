@@ -49,7 +49,7 @@ function main() {
   const jsSource = source
     .replace(/\/\/\s*@ts-nocheck.*\n?/g, '')
     .replace(/^\s*\/\/.*$/gm, (line) => line) // keep comments
-    .replace("'__DEPLOY_SECRET__'", JSON.stringify(deploySecret)); // embed actual secret
+    .replaceAll("'__DEPLOY_SECRET__'", JSON.stringify(deploySecret)); // embed actual secret (all occurrences)
 
   console.log('[compile-vm] Compiling...');
   const module = compile(jsSource);

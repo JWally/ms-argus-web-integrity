@@ -1,19 +1,33 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Argus Integrity — Local Test</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: monospace; background: #1a1a1a; color: #eee; padding: 20px; max-width: 900px; }
+    body { font-family: monospace; background: #1a1a1a; color: #eee; padding: 16px; max-width: 900px; }
     h1 { color: #88f; margin-bottom: 4px; font-size: 18px; }
     p { color: #666; font-size: 12px; margin-bottom: 16px; }
-    #toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-    button { padding: 8px 20px; font-size: 13px; cursor: pointer; background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 4px; font-family: monospace; }
-    button:hover:not(:disabled) { background: #333; }
-    button:disabled { opacity: 0.5; cursor: default; }
+
+    #toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+
+    #runBtn {
+      padding: 14px 32px; font-size: 16px; cursor: pointer;
+      background: #2a2a2a; color: #eee; border: 1px solid #444;
+      border-radius: 6px; font-family: monospace; width: 100%;
+    }
+    #runBtn:hover:not(:disabled) { background: #333; }
+    #runBtn:disabled { opacity: 0.5; cursor: default; }
+
     #duration { color: #8f8; font-size: 12px; }
-    #controls { display: none; gap: 8px; }
-    #controls button { padding: 4px 12px; font-size: 11px; color: #888; border-color: #333; }
+    #controls { display: none; gap: 8px; flex-wrap: wrap; }
+    #controls button {
+      padding: 8px 16px; font-size: 12px; cursor: pointer;
+      background: #2a2a2a; color: #888; border: 1px solid #333;
+      border-radius: 4px; font-family: monospace;
+    }
+    #controls button:hover { background: #333; }
 
     .accordion { display: flex; flex-direction: column; gap: 4px; }
 
@@ -24,7 +38,7 @@
 
     .header {
       display: flex; align-items: center; gap: 10px;
-      padding: 8px 12px; cursor: pointer; user-select: none;
+      padding: 10px 12px; cursor: pointer; user-select: none;
       background: #222;
     }
     .header:hover { background: #262626; }
@@ -39,8 +53,8 @@
     .item.warn  .title { color: #fa8; }
     .item.ok    .title { color: #888; }
 
-    .badges { display: flex; gap: 6px; }
-    .badge { font-size: 10px; padding: 1px 7px; border-radius: 8px; font-weight: bold; }
+    .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge { font-size: 10px; padding: 2px 8px; border-radius: 8px; font-weight: bold; white-space: nowrap; }
     .badge.red    { background: #400; color: #f88; }
     .badge.yellow { background: #430; color: #fa8; }
     .badge.green  { background: #040; color: #8f8; }
@@ -53,6 +67,10 @@
       padding: 12px; font-size: 11px; line-height: 1.5;
       white-space: pre-wrap; word-break: break-all;
       color: #bbb; max-height: 500px; overflow-y: auto;
+    }
+
+    @media (min-width: 600px) {
+      #runBtn { width: auto; padding: 8px 20px; font-size: 13px; }
     }
   </style>
 </head>
@@ -72,7 +90,7 @@
   <div class="accordion" id="accordion"></div>
 
   <script type="module">
-    import { collectIntegrity, runVmDetection } from '/dist/argus.esm.js';
+    import { collectIntegrity, runVmDetection } from '/argus.esm.js';
 
     const runBtn = document.getElementById('runBtn');
     const durationEl = document.getElementById('duration');
@@ -149,14 +167,7 @@
       const sections = [];
 
       // Engine
-      const mismatch = r.engine?.engineMismatch;
-      sections.push({
-        title: 'Engine',
-        level: mismatch ? 'alert' : 'ok',
-        badges: mismatch ? [badge('MISMATCH', 'red')] : [],
-        content: r.engine,
-        open: !!mismatch,
-      });
+      sections.push({ title: 'Engine', level: 'ok', badges: [], content: r.engine });
 
       // Headless
       const isHeadless = r.headless?.headless && Object.values(r.headless.headless).some(Boolean);
@@ -188,25 +199,15 @@
         content: r.trash,
       });
 
-      // Resistance
-      const brave = r.resistance?.privacy?.brave;
-      const tor = r.resistance?.privacy?.tor;
-      const rfp = r.resistance?.privacy?.resistFingerprinting;
+      // Shielding
+      const brave = r.shielding?.privacy === 'Brave';
+      const tor = r.shielding?.privacy === 'Tor Browser';
+      const rfp = r.shielding?.privacy === 'Firefox';
       const resBadges = [];
       if (tor) resBadges.push(badge('TOR', 'yellow'));
       if (brave) resBadges.push(badge('BRAVE', 'yellow'));
       if (rfp) resBadges.push(badge('RFP', 'yellow'));
-      sections.push({ title: 'Resistance', level: resBadges.length ? 'warn' : 'ok', badges: resBadges, content: r.resistance });
-
-      // Inconsistencies
-      const inconCount = r.inconsistencies?.inconsistencies?.length ?? 0;
-      sections.push({
-        title: 'Inconsistencies',
-        level: inconCount > 0 ? 'warn' : 'ok',
-        badges: inconCount > 0 ? [badge(`${inconCount}`, 'yellow')] : [],
-        content: r.inconsistencies,
-        open: inconCount > 0,
-      });
+      sections.push({ title: 'Shielding', level: resBadges.length ? 'warn' : 'ok', badges: resBadges, content: r.shielding });
 
       // Incognito
       sections.push({
@@ -220,7 +221,14 @@
       sections.push({ title: 'Navigator', level: 'ok', badges: [], content: r.navigator });
 
       // Screen
-      sections.push({ title: 'Screen', level: 'ok', badges: [], content: r.screen });
+      const screenLied = r.screen?.lied;
+      sections.push({
+        title: 'Screen',
+        level: screenLied ? 'warn' : 'ok',
+        badges: screenLied ? [badge('LIED', 'yellow')] : [],
+        content: r.screen,
+        open: !!screenLied,
+      });
 
       // Intl / Locale
       sections.push({ title: 'Intl / Locale', level: 'ok', badges: [], content: r.intl });
@@ -234,77 +242,17 @@
         content: r.timezone,
       });
 
-      // Timezone — VM
-      const vmTz = vm?.vm?.timezone;
-      const vmTzMismatch = vm?.vmSignals?.includes('vm:tz_offset_mismatch');
-      const tzMatch = vmTz && r.timezone &&
-        vmTz.offset === r.timezone.offset &&
-        vmTz.offsetComputed === r.timezone.offsetComputed &&
-        vmTz.location === r.timezone.location?.replace(/_/g, ' ').split('/').join(', ');
-      const vmTzBadges = [];
-      if (vmTzMismatch) vmTzBadges.push(badge('MISMATCH', 'red'));
-      else if (vmTz && tzMatch) vmTzBadges.push(badge('MATCH', 'green'));
-      else if (vmTz) vmTzBadges.push(badge('CHECK', 'grey'));
-      sections.push({
-        title: 'Timezone — VM',
-        level: vmTzMismatch ? 'alert' : 'ok',
-        badges: vmTzBadges,
-        content: vmTz ?? null,
-        open: !!vmTzMismatch,
-      });
-
       // Timing
       sections.push({ title: 'Timing', level: 'ok', badges: [], content: r.timing });
 
       // CSS Media
       sections.push({ title: 'CSS Media', level: 'ok', badges: [], content: r.cssMedia });
 
-      // CSS Media — VM
-      const vmCss = vm?.vm?.cssMedia;
-      const vmCssPointerNone = vm?.vmSignals?.includes('vm:css_pointer_none');
-      const vmCssMismatch = vm?.vmSignals?.includes('vm:css_matchmedia_mismatch');
-      const vmCssScreenMismatch = vm?.vmSignals?.includes('vm:css_screen_mismatch');
-      const vmCssBadges = [];
-      if (vmCssPointerNone) vmCssBadges.push(badge('POINTER NONE', 'red'));
-      if (vmCssMismatch) vmCssBadges.push(badge('MISMATCH', 'red'));
-      if (vmCssScreenMismatch) vmCssBadges.push(badge('SCREEN MISMATCH', 'red'));
-      if (vmCss !== undefined && !vmCssPointerNone && !vmCssMismatch && !vmCssScreenMismatch) {
-        vmCssBadges.push(badge('clean', 'green'));
-      }
-      sections.push({
-        title: 'CSS Media — VM',
-        level: (vmCssPointerNone || vmCssMismatch || vmCssScreenMismatch) ? 'alert' : 'ok',
-        badges: vmCssBadges,
-        content: vmCss ?? null,
-        open: !!(vmCssPointerNone || vmCssMismatch || vmCssScreenMismatch),
-      });
-
       // Status
       sections.push({ title: 'Status', level: 'ok', badges: [], content: r.status });
 
       // WebRTC
       sections.push({ title: 'WebRTC', level: 'ok', badges: [], content: r.webrtc });
-
-      // WebRTC — VM
-      const vmWrtc = vm?.vm?.webrtc;
-      const vmWrtcUnavailable = vm?.vmSignals?.includes('vm:webrtc_unavailable');
-      const vmWrtcRawIp = vm?.vmSignals?.includes('vm:webrtc_raw_ip');
-      const vmWrtcBadges = [];
-      if (vmWrtcUnavailable) vmWrtcBadges.push(badge('UNAVAILABLE', 'grey'));
-      else if (vmWrtcRawIp) vmWrtcBadges.push(badge('RAW IP', 'red'));
-      else if (vmWrtc !== undefined) {
-        const jsHasMdns = r.webrtc?.iceCandidates?.hasMDNS;
-        const vmHasMdns = vmWrtc?.iceCandidates?.hasMDNS;
-        if (jsHasMdns === vmHasMdns) vmWrtcBadges.push(badge('MATCH', 'green'));
-        else vmWrtcBadges.push(badge('MISMATCH', 'red'));
-      }
-      sections.push({
-        title: 'WebRTC — VM',
-        level: vmWrtcRawIp ? 'alert' : 'ok',
-        badges: vmWrtcBadges,
-        content: vmWrtc ?? null,
-        open: !!vmWrtcRawIp,
-      });
 
       // Worker Scope
       const wsLied = r.workerScope?.lied;
@@ -313,24 +261,6 @@
         level: wsLied ? 'warn' : 'ok',
         badges: wsLied ? [badge('LIED', 'yellow')] : [],
         content: r.workerScope,
-      });
-
-      // Worker Scope — VM
-      const vmWs = vm?.vm?.workerScope;
-      const vmWsLied = vm?.vmSignals?.includes('vm:worker_lied');
-      const vmWsUnavailable = vm?.vmSignals?.includes('vm:worker_unavailable');
-      const vmWsBadges = [];
-      if (vmWsUnavailable) vmWsBadges.push(badge('UNAVAILABLE', 'grey'));
-      else if (vmWsLied) vmWsBadges.push(badge('LIED', 'yellow'));
-      else if (vmWs) {
-        const agree = (vmWsLied === true) === (wsLied === true);
-        vmWsBadges.push(badge(agree ? 'MATCH' : 'MISMATCH', agree ? 'green' : 'red'));
-      }
-      sections.push({
-        title: 'Worker Scope — VM',
-        level: vmWsLied ? 'warn' : 'ok',
-        badges: vmWsBadges,
-        content: vmWs ?? null,
       });
 
       // Errors
@@ -345,7 +275,9 @@
         });
       }
 
-      // VM Signals
+      sections.sort((a, b) => a.title.localeCompare(b.title));
+
+      // VM Signals — always last
       const vmSigCount = vm?.vmSignals?.length ?? 0;
       sections.push({
         title: 'VM Signals',
@@ -355,7 +287,6 @@
         open: vmSigCount > 0,
       });
 
-      sections.sort((a, b) => a.title.localeCompare(b.title));
       return sections;
     }
   </script>
