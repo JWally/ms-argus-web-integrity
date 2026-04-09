@@ -1,9 +1,10 @@
 /**
- * Production build — terser minification only.
- * Real obfuscation lives in the VM bytecode (randomized opcodes, XOR scramble).
+ * Production build — terser minification.
  *
- * Usage: npm run build:obf
- * Output: dist/argus-integrity.iife.js (~48K gzipped, no source map)
+ * Usage: npm run build:obf (or via npm run build:prod)
+ * Output: dist/argus-integrity.iife.js (no source map)
+ *
+ * Target: < 75KB gzipped
  */
 import typescript from '@rollup/plugin-typescript';
 import nodeResolve from '@rollup/plugin-node-resolve';
@@ -33,11 +34,25 @@ export default [
       }),
       terser({
         compress: {
-          passes: 1,
-          drop_console: false,
+          passes: 3,
+          drop_console: true,
           drop_debugger: true,
+          side_effects: false,
+          reduce_funcs: false,
         },
-        mangle: true,
+        mangle: {
+          toplevel: true,
+          reserved: [
+            'ArgusIntegrity',
+            'collectIntegrity',
+            'runArgusVm',
+            'prefetchArgusVm',
+            'runVmDetection',
+          ],
+          properties: {
+            regex: /^_[a-z]/,
+          },
+        },
         format: {
           comments: false,
         },
