@@ -474,7 +474,17 @@ export async function fetchTcpProbe(config: SigintConfig): Promise<{
   const url = getTcpProbeEndpoint(config);
   const start = performance.now();
 
-  // Probe a single request first to detect response format
+  // Warm up the TCP connection with throwaway requests. The browser
+  // reuses the same keep-alive connection, so each request gives the
+  // kernel more bidirectional data to estimate rcv_rtt. The server
+  // re-reads tcp_info on each request, so the last one gets the best
+  // reading. We ignore the tokens from warm-up requests.
+  const WARMUP_COUNT = 3;
+  for (let i = 0; i < WARMUP_COUNT; i++) {
+    await fetchWithTimeout(url, merged.timeout).catch(() => {});
+  }
+
+  // Real request — server's tcp_info is now well-seasoned
   const probe = await fetchWithTimeout<
     TcpProbeResponse | EncryptedProbeResponse | ProbeTokenResponse
   >(url, merged.timeout);

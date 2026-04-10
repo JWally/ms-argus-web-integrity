@@ -590,8 +590,8 @@ describe('fetchTcpProbe median calculation', () => {
     const config: SigintConfig = { baseDomain: 'test.io', timeout: 1000 };
     const result = await fetchTcpProbe(config);
 
-    // Should make 5 requests
-    expect(mockFetch).toHaveBeenCalledTimes(5);
+    // 3 warmup + 1 probe + 4 legacy median = 8 requests
+    expect(mockFetch).toHaveBeenCalledTimes(8);
 
     // Should return the response closest to median (1.1)
     // Sorted ratios: [1.0, 1.05, 1.1, 5.0, 15.0] -> median = 1.1
