@@ -28,3 +28,7 @@ public/argus.esm.js
 
 # Helper Script Ignores
 *.sick
+
+# Local notes / TODO files
+todo.md
+todo-algo-derivation.md
