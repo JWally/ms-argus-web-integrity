@@ -14,8 +14,13 @@ export default defineConfig({
     reuseExistingServer: true,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'chromium', testIgnore: /adversarial/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', testIgnore: /adversarial/, use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', testIgnore: /adversarial/, use: { ...devices['Desktop Safari'] } },
+    {
+      name: 'adversarial',
+      testDir: './e2e/adversarial',
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
 });
