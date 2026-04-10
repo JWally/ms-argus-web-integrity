@@ -9,6 +9,7 @@ test.describe('integrity VM end-to-end', () => {
   test('collects fingerprint, runs VM, server decrypts and stores payload', async ({
     page,
     request,
+    browserName,
   }) => {
     const consoleLogs: string[] = [];
     const consoleErrors: string[] = [];
@@ -51,58 +52,123 @@ test.describe('integrity VM end-to-end', () => {
 
     // Parse the client-side result
     const clientResult = JSON.parse(resultText!);
-    console.log('Client VM result:', clientResult);
+    console.log('Client VM result:', {
+      sessionId: clientResult.sessionId,
+      tampered: clientResult.tampered,
+      vmSignals: clientResult.vmSignals,
+      vmHash: clientResult.vmHash,
+    });
 
-    // sessionId should be non-empty (server accepted the payload)
+    // ── A. VM result basics ──────────────────────────────────────────
     expect(
       clientResult.sessionId,
       'Server should return a session ID (decryption succeeded)',
     ).toBeTruthy();
     expect(clientResult.vmHash).toBeTruthy();
+    expect(typeof clientResult.tampered).toBe('boolean');
+    expect(Array.isArray(clientResult.vmSignals)).toBe(true);
 
-    // ── Fetch what the server actually stored ──────────────────────
+    // ── B. Fingerprint structure ─────────────────────────────────────
+    const fp = clientResult.fingerprint;
+    expect(fp, 'fingerprint should be present in result').toBeTruthy();
+
+    // Meta
+    expect(fp.meta.durationMs).toBeGreaterThan(0);
+    expect(fp.meta.durationMs).toBeLessThan(10_000);
+    expect(fp.meta.timestamp).toBeGreaterThan(0);
+
+    // Engine detection ran
+    expect(fp.engine, 'engine detection should produce a result').toBeTruthy();
+
+    // Navigator
+    expect(fp.navigator, 'navigator should be collected').toBeTruthy();
+    expect(fp.navigator.userAgent).toBeTruthy();
+
+    // Timezone
+    expect(fp.timezone, 'timezone should be collected').toBeTruthy();
+
+    // Screen
+    expect(fp.screen, 'screen should be collected').toBeTruthy();
+
+    // CSS media
+    expect(fp.cssMedia, 'cssMedia should be collected').toBeTruthy();
+    expect(fp.cssMedia.matchMediaCSS).toBeTruthy();
+    expect(fp.cssMedia.mediaCSS).toBeTruthy();
+
+    // Lies scanner
+    expect(fp.lies, 'lies scanner should produce a result').toBeTruthy();
+    expect(typeof fp.lies.totalLies).toBe('number');
+
+    // Headless detection
+    expect(fp.headless, 'headless detection should produce a result').toBeTruthy();
+    expect(fp.headless.likeHeadless, 'likeHeadless signals should be an object').toBeTruthy();
+    expect(typeof fp.headless.likeHeadlessRating).toBe('number');
+    // Playwright IS headless — rating should be non-zero (some signals fire)
+    expect(
+      fp.headless.likeHeadlessRating,
+      'Playwright should trigger some headless signals',
+    ).toBeGreaterThan(0);
+
+    // Trash / gibberish detection
+    expect(fp.trash, 'trash detection should produce a result').toBeTruthy();
+
+    // Worker scope
+    // Workers may not be available in all Playwright browsers, so just check structure
+    if (fp.workerScope) {
+      expect(fp.workerScope.best).toBeTruthy();
+    }
+
+    // ── C. WebRTC ────────────────────────────────────────────────────
+    if (browserName === 'chromium' || browserName === 'firefox') {
+      // WebRTC should work in Chromium and Firefox under Playwright
+      expect(fp.webrtc, `webrtc should be collected in ${browserName}`).toBeTruthy();
+      expect(fp.webrtc.extensions, 'RTP extensions should be an array').toBeInstanceOf(Array);
+      expect(fp.webrtc.extensions.length, 'should have RTP extensions').toBeGreaterThan(0);
+    }
+    // WebKit may not support WebRTC in Playwright — don't hard-fail
+
+    // ── D. Browser-specific VM signal checks ─────────────────────────
+    if (browserName === 'chromium') {
+      // Playwright Chromium always sets navigator.webdriver = true
+      expect(
+        clientResult.vmSignals,
+        'Chromium should detect webdriver',
+      ).toContain('vm:webdriver');
+    }
+
+    // ── E. Server-side verification ──────────────────────────────────
     const sessionUrl = `${API_BASE}/v1/integrity-session/${clientResult.sessionId}`;
     const serverResp = await request.get(sessionUrl, {
       headers: { 'X-Api-Key': API_KEY },
     });
 
-    console.log(
-      `\n--- Server response (${serverResp.status()}) ---`,
-    );
+    console.log(`\n--- Server response (${serverResp.status()}) ---`);
 
-    if (serverResp.ok()) {
-      const serverData = await serverResp.json();
-      console.log(JSON.stringify(serverData, null, 2));
-      console.log('--- End server response ---\n');
+    // Hard assert on server response status
+    expect(
+      serverResp.status(),
+      `Server returned ${serverResp.status()} for session lookup`,
+    ).toBe(200);
 
-      // Verify the server stored meaningful data
-      const integrity = serverData.integrity ?? serverData;
+    const serverData = await serverResp.json();
+    console.log(JSON.stringify(serverData, null, 2));
+    console.log('--- End server response ---\n');
 
-      // The payload should contain device fingerprint data
-      expect(
-        integrity.device ?? integrity.payload?.device,
-        'Server should have device fingerprint data',
-      ).toBeTruthy();
+    // Verify the server stored meaningful data
+    const integrity = serverData.integrity ?? serverData;
 
-      // VM signals should match what the client reported
-      if (integrity.vm_signals) {
-        expect(integrity.vm_signals).toEqual(clientResult.vmSignals);
-      }
+    // The payload should contain device fingerprint data
+    const device = integrity.device ?? integrity.payload?.device;
+    expect(device, 'Server should have device fingerprint data').toBeTruthy();
 
-      // vmHash should match
-      if (integrity.vm_hash) {
-        expect(integrity.vm_hash).toBe(clientResult.vmHash);
-      }
-    } else {
-      const body = await serverResp.text();
-      console.log(`FAILED: ${body}`);
-      console.log('--- End server response ---\n');
-      // Don't hard-fail here — the session-get endpoint may require auth
-      // or the table name might not be configured. Log it for visibility.
-      console.warn(
-        `Could not fetch server-side data (${serverResp.status()}). ` +
-          'Check if /v1/integrity-session is configured.',
-      );
+    // VM signals should match what the client reported
+    if (integrity.vm_signals) {
+      expect(integrity.vm_signals).toEqual(clientResult.vmSignals);
+    }
+
+    // vmHash should match
+    if (integrity.vm_hash) {
+      expect(integrity.vm_hash).toBe(clientResult.vmHash);
     }
   });
 });

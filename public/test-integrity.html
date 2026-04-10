@@ -32,6 +32,7 @@
           tampered: vm.tampered,
           vmSignals: vm.vmSignals,
           vmHash: vm.vmHash,
+          fingerprint: fp,
         };
         out.textContent = JSON.stringify(payload, null, 2);
         el.textContent = vm.sessionId ? 'ok' : 'no-session';
