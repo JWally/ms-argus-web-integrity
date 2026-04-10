@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "npm run build:prod && npx playwright test",
     "start": "node server.js",
     "dev": "rollup --config rollup.config.mjs -w & nodemon -d 3 ./server.js localhost 8000",
     "build": "rollup --config rollup.config.mjs",
