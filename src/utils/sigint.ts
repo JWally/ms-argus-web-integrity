@@ -5,7 +5,6 @@
  * - TLS Fingerprint Edge (CloudFront): JA3/JA4, third-party cookies, geo/ASN
  * - TCP Probe: TCP RTT, VPN/proxy detection
  * - H2 Probe: HTTP/2 protocol fingerprinting (SETTINGS, WINDOW_UPDATE, PRIORITY frames)
- * - STUN: WebRTC IP discovery
  *
  * All endpoints are configurable via domain configuration.
  */
@@ -28,8 +27,6 @@ export interface SigintConfig {
   enableTcpProbe?: boolean;
   /** Enable H2 probe endpoint for HTTP/2 fingerprinting (default: true) */
   enableH2Probe?: boolean;
-  /** Enable STUN for WebRTC IP discovery (default: false - requires user gesture) */
-  enableStun?: boolean;
 }
 
 /** Response from TLS Fingerprint Edge (CloudFront) */
@@ -207,18 +204,6 @@ export interface TcpProbeResponse {
   domain: string;
 }
 
-/** WebRTC STUN result */
-export interface StunResult {
-  /** Local IP address (private) */
-  localIp: string | null;
-  /** Reflexive IP address (public, as seen by STUN server) */
-  reflexiveIp: string | null;
-  /** Whether NAT was detected */
-  natDetected: boolean;
-  /** STUN server used */
-  stunServer: string;
-}
-
 /** Combined sigint data */
 export interface SigintData {
   /** TLS fingerprint data from CloudFront edge */
@@ -231,14 +216,11 @@ export interface SigintData {
     | null;
   /** H2 probe data: token (current), encrypted blob (legacy encrypted), or plaintext (legacy) */
   h2Probe: H2ProbeResponse | EncryptedProbeResponse | ProbeTokenResponse | null;
-  /** STUN/WebRTC data */
-  stun: StunResult | null;
   /** Collection timing */
   timing: {
     tlsFingerprintMs: number | null;
     tcpProbeMs: number | null;
     h2ProbeMs: number | null;
-    stunMs: number | null;
     totalMs: number;
   };
   /** Any errors that occurred */
@@ -256,7 +238,6 @@ const DEFAULT_CONFIG: Required<SigintConfig> = {
   enableCookie: true,
   enableTcpProbe: true,
   enableH2Probe: true,
-  enableStun: false,
 };
 
 /* ------------------------------------------------------------------ */
@@ -306,17 +287,6 @@ export function getH2ProbeEndpoint(config: SigintConfig): string {
   return buildEndpoint(merged, 'h2');
 }
 
-/**
- * Get the STUN server URI for WebRTC ICE candidate gathering.
- *
- * @param config - Sigint configuration specifying domain and stage
- * @returns STUN URI in the format `stun:<subdomain>.<domain>:3478`
- */
-export function getStunServerUri(config: SigintConfig): string {
-  const merged = { ...DEFAULT_CONFIG, ...config };
-  const subdomain = `${merged.stagePrefix}stun`;
-  return `stun:${subdomain}.${merged.baseDomain}:3478`;
-}
 
 
 /* ------------------------------------------------------------------ */
@@ -608,120 +578,6 @@ export async function fetchH2Probe(config: SigintConfig): Promise<{
   >(url, merged.timeout);
 }
 
-/**
- * Perform a STUN binding request via WebRTC to discover local and reflexive IP addresses.
- *
- * Creates a temporary RTCPeerConnection, gathers ICE candidates, and extracts host
- * and server-reflexive candidate IPs to detect NAT presence.
- *
- * @param config - Sigint configuration for STUN server URI and timeout
- * @returns Object containing STUN result with local/reflexive IPs, any error message, and duration in ms
- */
-export async function performStunBinding(config: SigintConfig): Promise<{
-  data: StunResult | null;
-  error: string | null;
-  durationMs: number;
-}> {
-  const merged = { ...DEFAULT_CONFIG, ...config };
-  const stunServer = getStunServerUri(config);
-  const start = performance.now();
-
-  if (typeof RTCPeerConnection === 'undefined') {
-    return {
-      data: null,
-      error: 'WebRTC not available',
-      durationMs: performance.now() - start,
-    };
-  }
-
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      pc.close();
-      resolve({
-        data: null,
-        error: `STUN timeout after ${merged.timeout}ms`,
-        durationMs: performance.now() - start,
-      });
-    }, merged.timeout);
-
-    const result: StunResult = {
-      localIp: null,
-      reflexiveIp: null,
-      natDetected: false,
-      stunServer,
-    };
-
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: stunServer }],
-    });
-
-    const completeProbe = () => {
-      clearTimeout(timeout);
-      pc.close();
-
-      result.natDetected =
-        result.localIp !== null &&
-        result.reflexiveIp !== null &&
-        result.localIp !== result.reflexiveIp;
-
-      resolve({
-        data: result,
-        error: null,
-        durationMs: performance.now() - start,
-      });
-    };
-
-    pc.onicecandidate = (event) => {
-      if (!event.candidate) {
-        completeProbe();
-        return;
-      }
-
-      const candidate = event.candidate.candidate;
-      // Parse ICE candidate to extract IPs
-      // Format: candidate:... typ host/srflx ... address IP ...
-      const parts = candidate.split(' ');
-      const typeIndex = parts.indexOf('typ');
-      if (typeIndex === -1) return;
-
-      const candidateType = parts[typeIndex + 1];
-      const ipIndex = 4; // IP is typically at index 4
-
-      if (parts[ipIndex]) {
-        const ip = parts[ipIndex];
-        // Skip IPv6 link-local and mDNS
-        if (ip.includes(':') || ip.endsWith('.local')) return;
-
-        if (candidateType === 'host') {
-          result.localIp = ip;
-        } else if (candidateType === 'srflx') {
-          result.reflexiveIp = ip;
-        }
-      }
-    };
-
-    pc.onicegatheringstatechange = () => {
-      if (pc.iceGatheringState === 'complete') {
-        completeProbe();
-      }
-    };
-
-    // Create data channel to trigger ICE gathering
-    pc.createDataChannel('stun-probe');
-
-    pc.createOffer()
-      .then((offer) => pc.setLocalDescription(offer))
-      .catch((err) => {
-        clearTimeout(timeout);
-        pc.close();
-        resolve({
-          data: null,
-          error: `WebRTC error: ${err.message}`,
-          durationMs: performance.now() - start,
-        });
-      });
-  });
-}
 
 /* ------------------------------------------------------------------ */
 /*  Main Collector                                                     */
@@ -731,7 +587,7 @@ export async function performStunBinding(config: SigintConfig): Promise<{
 /**
  * Collect all enabled sigint signals in parallel and return the combined result.
  *
- * Runs TLS fingerprint, TCP probe, H2 probe, STUN, and favicon cache requests concurrently
+ * Runs TLS fingerprint, TCP probe, and H2 probe requests concurrently
  * based on configuration flags, aggregating results and errors.
  *
  * @param config - Sigint configuration controlling which collectors to run
@@ -763,10 +619,6 @@ export async function collectSigintData(
     requestTypes.push('h2');
   }
 
-  if (merged.enableStun) {
-    requests.push(performStunBinding(config));
-    requestTypes.push('stun');
-  }
 
 
   // Execute in parallel
@@ -787,8 +639,6 @@ export async function collectSigintData(
     | ProbeTokenResponse
     | null = null;
   let h2ProbeMs: number | null = null;
-  let stun: StunResult | null = null;
-  let stunMs: number | null = null;
 
   for (let i = 0; i < results.length; i++) {
     const type = requestTypes[i];
@@ -823,10 +673,6 @@ export async function collectSigintData(
           | null;
         h2ProbeMs = result.durationMs;
         break;
-      case 'stun':
-        stun = result.data as StunResult | null;
-        stunMs = result.durationMs;
-        break;
     }
   }
 
@@ -834,12 +680,10 @@ export async function collectSigintData(
     tlsFingerprint,
     tcpProbe,
     h2Probe,
-    stun,
     timing: {
       tlsFingerprintMs,
       tcpProbeMs,
       h2ProbeMs,
-      stunMs,
       totalMs: performance.now() - start,
     },
     errors,
@@ -859,7 +703,6 @@ export async function collectSigintData(
  * - sigintTimeout: Request timeout in ms
  * - sigintCookie: Enable cookie endpoint ("true"/"false")
  * - sigintTcpProbe: Enable TCP probe ("true"/"false")
- * - sigintStun: Enable STUN ("true"/"false")
  *
  * @param url - URL string or URL object from which to extract search parameters
  * @returns Partial sigint config populated from any recognized query parameters
@@ -891,10 +734,6 @@ export function parseSigintConfigFromUrl(
 
   const h2Probe = searchParams.get('sigintH2Probe');
   if (h2Probe !== null) config.enableH2Probe = h2Probe !== 'false';
-
-  const stun = searchParams.get('sigintStun');
-  if (stun !== null) config.enableStun = stun === 'true';
-
 
   return config;
 }

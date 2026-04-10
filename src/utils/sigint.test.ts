@@ -4,12 +4,10 @@ import {
   fetchTlsFingerprint,
   fetchTcpProbe,
   fetchH2Probe,
-  performStunBinding,
   parseSigintConfigFromUrl,
   getTlsFingerprintEndpoint,
   getTcpProbeEndpoint,
   getH2ProbeEndpoint,
-  getStunServerUri,
   getProxyScore,
   getTlsHash,
   getThirdPartyCookieId,
@@ -62,17 +60,6 @@ describe('sigint URL builders', () => {
     expect(url).toBe('https://dev-jw-h2.argus.pw/');
   });
 
-  it('builds STUN server URI with default config', () => {
-    const config: SigintConfig = { baseDomain: 'argus.pw' };
-    const uri = getStunServerUri(config);
-    expect(uri).toBe('stun:stun.argus.pw:3478');
-  });
-
-  it('builds STUN server URI with stage prefix', () => {
-    const config: SigintConfig = { baseDomain: 'argus.pw', stagePrefix: 'qa-' };
-    const uri = getStunServerUri(config);
-    expect(uri).toBe('stun:qa-stun.argus.pw:3478');
-  });
 });
 
 describe('parseSigintConfigFromUrl', () => {
@@ -124,21 +111,14 @@ describe('parseSigintConfigFromUrl', () => {
     expect(config.enableH2Probe).toBe(false);
   });
 
-  it('parses sigintStun=true from URL', () => {
-    const url = new URL('https://example.com/script.js?sigintStun=true');
-    const config = parseSigintConfigFromUrl(url);
-    expect(config.enableStun).toBe(true);
-  });
-
   it('parses multiple params from URL', () => {
     const url = new URL(
-      'https://example.com/script.js?sigintDomain=foo.io&sigintStage=uat-&sigintTimeout=8000&sigintStun=true',
+      'https://example.com/script.js?sigintDomain=foo.io&sigintStage=uat-&sigintTimeout=8000',
     );
     const config = parseSigintConfigFromUrl(url);
     expect(config.baseDomain).toBe('foo.io');
     expect(config.stagePrefix).toBe('uat-');
     expect(config.timeout).toBe(8000);
-    expect(config.enableStun).toBe(true);
   });
 
   it('works with string URL', () => {
@@ -156,13 +136,13 @@ describe('helper functions', () => {
         tlsFingerprint: null,
         tcpProbe: null,
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -184,13 +164,13 @@ describe('helper functions', () => {
           domain: 'test.io',
         },
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: 100,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -224,13 +204,13 @@ describe('helper functions', () => {
           domain: 'test.io',
         },
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: 100,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -246,13 +226,13 @@ describe('helper functions', () => {
         tlsFingerprint: null,
         tcpProbe: null,
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -274,13 +254,13 @@ describe('helper functions', () => {
         },
         tcpProbe: null,
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -302,13 +282,13 @@ describe('helper functions', () => {
         },
         tcpProbe: null,
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -324,13 +304,13 @@ describe('helper functions', () => {
         tlsFingerprint: null,
         tcpProbe: null,
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -352,13 +332,13 @@ describe('helper functions', () => {
         },
         tcpProbe: null,
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -374,13 +354,13 @@ describe('helper functions', () => {
         tlsFingerprint: null,
         tcpProbe: null,
         h2Probe: null,
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -405,13 +385,13 @@ describe('helper functions', () => {
           client_ip: '1.2.3.4',
           domain: 'test.io',
         },
-        stun: null,
+
 
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: 50,
-          stunMs: null,
+
 
           totalMs: 100,
         },
@@ -437,7 +417,7 @@ describe('collectSigintData', () => {
       enableCookie: false,
       enableTcpProbe: false,
       enableH2Probe: false,
-      enableStun: false,
+
 
     };
 
@@ -446,7 +426,6 @@ describe('collectSigintData', () => {
     expect(result.tlsFingerprint).toBe(null);
     expect(result.tcpProbe).toBe(null);
     expect(result.h2Probe).toBe(null);
-    expect(result.stun).toBe(null);
     expect(result.errors).toHaveLength(0);
   });
 
@@ -459,7 +438,7 @@ describe('collectSigintData', () => {
       enableCookie: true,
       enableTcpProbe: true,
       enableH2Probe: true,
-      enableStun: false,
+
 
       timeout: 1000,
     };
@@ -495,7 +474,7 @@ describe('collectSigintData', () => {
       enableCookie: true,
       enableTcpProbe: false,
       enableH2Probe: false,
-      enableStun: false,
+
 
       timeout: 1000,
     };
@@ -551,7 +530,7 @@ describe('collectSigintData', () => {
       enableCookie: true,
       enableTcpProbe: true,
       enableH2Probe: true,
-      enableStun: false,
+
 
       timeout: 1000,
     };
@@ -559,18 +538,6 @@ describe('collectSigintData', () => {
     const result = await collectSigintData(config);
 
     expect(result.timing.totalMs).toBeGreaterThan(0);
-  });
-});
-
-describe('performStunBinding', () => {
-  it('returns error when RTCPeerConnection not available', async () => {
-    // In test environment, RTCPeerConnection is not available
-    const config: SigintConfig = { baseDomain: 'test.io' };
-    const result = await performStunBinding(config);
-
-    // Should handle gracefully
-    expect(result.error).toContain('WebRTC not available');
-    expect(result.data).toBe(null);
   });
 });
 
@@ -761,12 +728,10 @@ describe('getProxyScore — encrypted probe', () => {
     tlsFingerprint: null,
     tcpProbe: null,
     h2Probe: null,
-    stun: null,
     timing: {
       tlsFingerprintMs: null,
       tcpProbeMs: null,
       h2ProbeMs: null,
-      stunMs: null,
       totalMs: 0,
     },
     errors: [],
@@ -786,12 +751,10 @@ describe('getH2Fingerprint — encrypted probe', () => {
     tlsFingerprint: null,
     tcpProbe: null,
     h2Probe: null,
-    stun: null,
     timing: {
       tlsFingerprintMs: null,
       tcpProbeMs: null,
       h2ProbeMs: null,
-      stunMs: null,
       totalMs: 0,
     },
     errors: [],
