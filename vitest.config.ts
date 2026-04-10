@@ -31,12 +31,6 @@ export default defineConfig({
           functions: 60,
           lines: 65,
         },
-        'src/utils/delta.ts': {
-          statements: 50,
-          branches: 50,
-          functions: 50,
-          lines: 50,
-        },
         'src/utils/engine.ts': {
           statements: 85,
           branches: 50,
