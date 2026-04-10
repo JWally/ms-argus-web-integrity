@@ -474,12 +474,15 @@ export async function fetchTcpProbe(config: SigintConfig): Promise<{
   const url = getTcpProbeEndpoint(config);
   const start = performance.now();
 
-  // Warm up the TCP connection with lightweight requests. The server
-  // returns 204 (no DynamoDB write) but keeps the connection alive and
-  // accumulates tcp_info data. Only the final ?use=1 request stores.
+  // Warm up the TCP connection with sequential requests. The server
+  // returns fingerprint data but skips DynamoDB storage. Each request
+  // gives the kernel more data for rcv_rtt estimation and provides
+  // application-layer RTT measurements. We capture all responses.
   const WARMUP_COUNT = 3;
+  const warmupResponses: Array<{ data: TcpProbeResponse | null }> = [];
   for (let i = 0; i < WARMUP_COUNT; i++) {
-    await fetchWithTimeout(url, merged.timeout).catch(() => {});
+    const r = await fetchWithTimeout<TcpProbeResponse>(url, merged.timeout).catch(() => ({ data: null, error: 'failed', durationMs: 0 }));
+    warmupResponses.push({ data: r.data });
   }
 
   // Real request — ?use=1 tells server to store and return token
@@ -489,9 +492,13 @@ export async function fetchTcpProbe(config: SigintConfig): Promise<{
   >(realUrl, merged.timeout);
 
   // Token response: probe stores fingerprint server-side, forward token to API
+  // Attach warm-up readings so they flow into the payload for analysis
   if (probe.data !== null && isProbeTokenResponse(probe.data)) {
+    const warmupData = warmupResponses
+      .map((w) => w.data?.rtt_fingerprint)
+      .filter(Boolean);
     return {
-      data: probe.data,
+      data: { ...probe.data, warmup: warmupData },
       error: null,
       durationMs: performance.now() - start,
     };
