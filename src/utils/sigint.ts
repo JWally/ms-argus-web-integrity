@@ -474,20 +474,19 @@ export async function fetchTcpProbe(config: SigintConfig): Promise<{
   const url = getTcpProbeEndpoint(config);
   const start = performance.now();
 
-  // Warm up the TCP connection with throwaway requests. The browser
-  // reuses the same keep-alive connection, so each request gives the
-  // kernel more bidirectional data to estimate rcv_rtt. The server
-  // re-reads tcp_info on each request, so the last one gets the best
-  // reading. We ignore the tokens from warm-up requests.
+  // Warm up the TCP connection with lightweight requests. The server
+  // returns 204 (no DynamoDB write) but keeps the connection alive and
+  // accumulates tcp_info data. Only the final ?use=1 request stores.
   const WARMUP_COUNT = 3;
   for (let i = 0; i < WARMUP_COUNT; i++) {
     await fetchWithTimeout(url, merged.timeout).catch(() => {});
   }
 
-  // Real request — server's tcp_info is now well-seasoned
+  // Real request — ?use=1 tells server to store and return token
+  const realUrl = url + (url.includes('?') ? '&' : '?') + 'use=1';
   const probe = await fetchWithTimeout<
     TcpProbeResponse | EncryptedProbeResponse | ProbeTokenResponse
-  >(url, merged.timeout);
+  >(realUrl, merged.timeout);
 
   // Token response: probe stores fingerprint server-side, forward token to API
   if (probe.data !== null && isProbeTokenResponse(probe.data)) {
