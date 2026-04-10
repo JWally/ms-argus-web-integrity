@@ -84,6 +84,16 @@ export interface WorkerScopeData {
   webgl2Renderer?: string;
   webgl2Vendor?: string;
   userAgentData?: Record<string, unknown>;
+  // Extended navigator properties
+  appVersion?: string;
+  product?: string;
+  onLine?: boolean;
+  globalPrivacyControl?: boolean;
+  connection?: { downlink?: number; effectiveType?: string; rtt?: number; saveData?: boolean } | null;
+  permissions?: Record<string, string> | null;
+  storageEstimate?: { quota?: number; usage?: number } | null;
+  mediaCapabilities?: Record<string, { supported: boolean; smooth: boolean; powerEfficient: boolean }> | null;
+  // Enriched fields (added post-collection)
   system?: string;
   device?: string;
   userAgentVersion?: string;

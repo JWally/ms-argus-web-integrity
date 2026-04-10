@@ -8,7 +8,7 @@ import {
   IS_BLINK,
   getReportedPlatform,
 } from '../utils/helpers';
-import { computeTimezoneOffset, getLocaleString, getCurrencyLocales, getMainWebgl } from './collect';
+import { computeTimezoneOffset, getLocaleString, getCurrencyLocales, getMainWebgl, getConnection, getPermissions, getStorageEstimate, getMediaCapabilities } from './collect';
 import { enrichScope } from './enrich';
 import type { WorkerScopeData } from './types';
 
@@ -82,6 +82,54 @@ const computeTimezoneOffset = () => {
   return Math.round((Date.parse(new Date(dateStr)) - new Date(utcStr).getTime()) / 60000);
 };
 
+const getConnection = () => {
+  try {
+    const c = navigator.connection;
+    if (!c) return null;
+    return { downlink: c.downlink, effectiveType: c.effectiveType, rtt: c.rtt, saveData: c.saveData };
+  } catch { return null; }
+};
+
+const getPermissions = async () => {
+  try {
+    if (!navigator.permissions) return null;
+    const names = ['notifications', 'push', 'persistent-storage', 'screen-wake-lock'];
+    const results = {};
+    for (const name of names) {
+      try { results[name] = (await navigator.permissions.query({ name })).state; } catch {}
+    }
+    return results;
+  } catch { return null; }
+};
+
+const getStorageEstimate = async () => {
+  try {
+    if (!navigator.storage || !navigator.storage.estimate) return null;
+    const { quota, usage } = await navigator.storage.estimate();
+    return { quota, usage };
+  } catch { return null; }
+};
+
+const getMediaCapabilities = async () => {
+  try {
+    if (!navigator.mediaCapabilities) return null;
+    const configs = [
+      { type: 'file', video: { contentType: 'video/webm; codecs="vp8"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
+      { type: 'file', video: { contentType: 'video/webm; codecs="vp9"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
+      { type: 'file', audio: { contentType: 'audio/webm; codecs="opus"', channels: 2, bitrate: 128000, samplerate: 48000 } },
+    ];
+    const results = {};
+    for (const cfg of configs) {
+      try {
+        const key = cfg.video ? cfg.video.contentType : cfg.audio.contentType;
+        const r = await navigator.mediaCapabilities.decodingInfo(cfg);
+        results[key] = { supported: r.supported, smooth: r.smooth, powerEfficient: r.powerEfficient };
+      } catch {}
+    }
+    return results;
+  } catch { return null; }
+};
+
 const getWorkerData = async () => {
   const userAgentData = await getUserAgentData(navigator);
   const { webglVendor, webglRenderer, webgl2Vendor, webgl2Renderer } = getWebglData();
@@ -96,6 +144,12 @@ const getWorkerData = async () => {
     systemCurrencyLocale = (1).toLocaleString(lang || undefined, { style: 'currency', currency: 'USD', currencyDisplay: 'name', minimumFractionDigits: 0, maximumFractionDigits: 0 });
   } catch {}
   const engineCurrencyLocale = (1).toLocaleString(undefined, { style: 'currency', currency: 'USD', currencyDisplay: 'name', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+  // Additional WorkerNavigator properties
+  const connection = getConnection();
+  const permissions = await getPermissions();
+  const storageEstimate = await getStorageEstimate();
+  const mediaCapabilities = await getMediaCapabilities();
 
   return {
     lied: false,
@@ -117,7 +171,17 @@ const getWorkerData = async () => {
     webglVendor,
     webgl2Renderer,
     webgl2Vendor,
-    userAgentData
+    userAgentData,
+    // Extended navigator properties
+    appVersion: navigator.appVersion,
+    product: navigator.product,
+    onLine: navigator.onLine,
+    globalPrivacyControl: navigator.globalPrivacyControl,
+    // Async probes
+    connection,
+    permissions,
+    storageEstimate,
+    mediaCapabilities,
   };
 };
 
@@ -172,10 +236,15 @@ function spawnBlobWorker(
 /**
  * Builds the main-thread scope baseline for cross-context validation.
  */
-function collectMainScope() {
+async function collectMainScope() {
   const { systemCurrencyLocale, engineCurrencyLocale } = getCurrencyLocales(navigator.language);
   const locale = getLocaleString();
   const enriched = enrichScope({ userAgent: navigator.userAgent, userAgentData: (navigator as any).userAgentData });
+  const [permissions, storageEstimate, mediaCapabilities] = await Promise.all([
+    getPermissions().catch(() => null),
+    getStorageEstimate().catch(() => null),
+    getMediaCapabilities().catch(() => null),
+  ]);
 
   return {
     hardwareConcurrency: navigator.hardwareConcurrency,
@@ -194,6 +263,14 @@ function collectMainScope() {
     ...getMainWebgl(),
     ...enriched,
     ...((navigator as any).userAgentData ? { userAgentData: (navigator as any).userAgentData } : {}),
+    appVersion: navigator.appVersion,
+    product: navigator.product,
+    onLine: navigator.onLine,
+    globalPrivacyControl: (navigator as any).globalPrivacyControl,
+    connection: getConnection(),
+    permissions,
+    storageEstimate,
+    mediaCapabilities,
   };
 }
 
@@ -210,7 +287,7 @@ export default async function getBestWorkerScope() {
     await queueEvent(timer);
 
     const blobUrl = createWorkerBlobUrl();
-    const mainScope = collectMainScope();
+    const mainScope = await collectMainScope();
 
     // Spawn workers in parallel
     const [sharedResult, webResult] = await Promise.all([

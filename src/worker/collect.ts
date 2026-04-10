@@ -76,3 +76,63 @@ export function getMainWebgl(): {
     };
   } catch { return {}; }
 }
+
+/**
+ * Gets NetworkInformation from navigator.connection (main thread).
+ */
+export function getConnection(): { downlink?: number; effectiveType?: string; rtt?: number; saveData?: boolean } | null {
+  try {
+    const c = (navigator as any).connection;
+    if (!c) return null;
+    return { downlink: c.downlink, effectiveType: c.effectiveType, rtt: c.rtt, saveData: c.saveData };
+  } catch { return null; }
+}
+
+/**
+ * Queries permission states for cross-validation with worker scope.
+ */
+export async function getPermissions(): Promise<Record<string, string> | null> {
+  try {
+    if (!navigator.permissions) return null;
+    const names = ['notifications', 'push', 'persistent-storage', 'screen-wake-lock'] as const;
+    const results: Record<string, string> = {};
+    for (const name of names) {
+      try { results[name] = (await navigator.permissions.query({ name: name as PermissionName })).state; } catch {}
+    }
+    return results;
+  } catch { return null; }
+}
+
+/**
+ * Gets storage quota estimate for cross-validation.
+ */
+export async function getStorageEstimate(): Promise<{ quota?: number; usage?: number } | null> {
+  try {
+    if (!navigator.storage?.estimate) return null;
+    const { quota, usage } = await navigator.storage.estimate();
+    return { quota, usage };
+  } catch { return null; }
+}
+
+/**
+ * Probes media decoding capabilities for fingerprinting.
+ */
+export async function getMediaCapabilities(): Promise<Record<string, { supported: boolean; smooth: boolean; powerEfficient: boolean }> | null> {
+  try {
+    if (!(navigator as any).mediaCapabilities) return null;
+    const configs = [
+      { type: 'file' as const, video: { contentType: 'video/webm; codecs="vp8"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
+      { type: 'file' as const, video: { contentType: 'video/webm; codecs="vp9"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
+      { type: 'file' as const, audio: { contentType: 'audio/webm; codecs="opus"', channels: 2, bitrate: 128000, samplerate: 48000 } },
+    ];
+    const results: Record<string, { supported: boolean; smooth: boolean; powerEfficient: boolean }> = {};
+    for (const cfg of configs) {
+      try {
+        const key = cfg.video ? cfg.video.contentType : cfg.audio!.contentType;
+        const r = await (navigator as any).mediaCapabilities.decodingInfo(cfg);
+        results[key] = { supported: r.supported, smooth: r.smooth, powerEfficient: r.powerEfficient };
+      } catch {}
+    }
+    return results;
+  } catch { return null; }
+}
