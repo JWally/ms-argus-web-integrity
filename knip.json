@@ -10,7 +10,6 @@
   "ignore": [
     "**/*.test.ts",
     "scripts/**",
-    "src/timezone/constants-lite.ts",
     "src/webgl/constants-lite.ts",
     "src/utils/exile.ts",
     "src/utils/html.ts",

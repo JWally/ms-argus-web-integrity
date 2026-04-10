@@ -8,9 +8,6 @@
  * @see https://arkenfox.github.io/TZP
  */
 
-import { loadTimezoneCities } from '../utils/data-loader';
-import { expectFailure } from '../utils/expected-failure';
-
 /**
  * Historical year used for timezone offset calculations.
  *
@@ -25,29 +22,8 @@ export const HISTORICAL_YEAR = 1113;
  */
 export const MS_PER_MINUTE = 60000;
 
-/** Cached timezone cities loaded from external data */
-let _timezoneCities: string[] | null = null;
-
 /**
- * Get timezone cities, loading from external data if not cached.
- */
-export async function getTimezoneCities(): Promise<string[]> {
-  if (_timezoneCities) return _timezoneCities;
-
-  try {
-    _timezoneCities = await loadTimezoneCities();
-    return _timezoneCities;
-  } catch {
-    expectFailure(
-      'loadTimezoneCities',
-      'External timezone data load failed, using inline',
-    );
-    return TIMEZONE_CITIES_INLINE as unknown as string[];
-  }
-}
-
-/**
- * Complete list of IANA timezone identifiers (inline fallback).
+ * Complete list of IANA timezone identifiers.
  *
  * This list includes all standard timezones from the IANA Time Zone Database.
  * Used to determine the user's actual location by comparing browser-reported
@@ -68,7 +44,6 @@ export async function getTimezoneCities(): Promise<string[]> {
  *
  * Total: ~460 timezone identifiers
  *
- * @deprecated Use getTimezoneCities() for external data loading. Will be removed in v2.0.
  */
 export const TIMEZONE_CITIES_INLINE = [
   'UTC',
@@ -545,8 +520,4 @@ export const TIMEZONE_CITIES_INLINE = [
   'Pacific/Wallis',
 ] as const;
 
-/**
- * Backwards-compatible export of timezone cities.
- * @deprecated Use getTimezoneCities() for async loading with external data support. Will be removed in v2.0.
- */
 export const TIMEZONE_CITIES = TIMEZONE_CITIES_INLINE;
