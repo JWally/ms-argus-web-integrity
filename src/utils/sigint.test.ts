@@ -157,13 +157,13 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -185,13 +185,13 @@ describe('helper functions', () => {
         },
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: 100,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -225,13 +225,13 @@ describe('helper functions', () => {
         },
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: 100,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -247,13 +247,13 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -275,13 +275,13 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -303,13 +303,13 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -325,13 +325,13 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -353,13 +353,13 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -375,13 +375,13 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -406,13 +406,13 @@ describe('helper functions', () => {
           domain: 'test.io',
         },
         stun: null,
-        faviconCache: null,
+
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: 50,
           stunMs: null,
-          faviconCacheMs: null,
+
           totalMs: 100,
         },
         errors: [],
@@ -438,7 +438,7 @@ describe('collectSigintData', () => {
       enableTcpProbe: false,
       enableH2Probe: false,
       enableStun: false,
-      enableFaviconCache: false,
+
     };
 
     const result = await collectSigintData(config);
@@ -460,7 +460,7 @@ describe('collectSigintData', () => {
       enableTcpProbe: true,
       enableH2Probe: true,
       enableStun: false,
-      enableFaviconCache: false,
+
       timeout: 1000,
     };
 
@@ -496,7 +496,7 @@ describe('collectSigintData', () => {
       enableTcpProbe: false,
       enableH2Probe: false,
       enableStun: false,
-      enableFaviconCache: false,
+
       timeout: 1000,
     };
 
@@ -552,7 +552,7 @@ describe('collectSigintData', () => {
       enableTcpProbe: true,
       enableH2Probe: true,
       enableStun: false,
-      enableFaviconCache: false,
+
       timeout: 1000,
     };
 
@@ -762,13 +762,11 @@ describe('getProxyScore — encrypted probe', () => {
     tcpProbe: null,
     h2Probe: null,
     stun: null,
-    faviconCache: null,
     timing: {
       tlsFingerprintMs: null,
       tcpProbeMs: null,
       h2ProbeMs: null,
       stunMs: null,
-      faviconCacheMs: null,
       totalMs: 0,
     },
     errors: [],
@@ -789,13 +787,11 @@ describe('getH2Fingerprint — encrypted probe', () => {
     tcpProbe: null,
     h2Probe: null,
     stun: null,
-    faviconCache: null,
     timing: {
       tlsFingerprintMs: null,
       tcpProbeMs: null,
       h2ProbeMs: null,
       stunMs: null,
-      faviconCacheMs: null,
       totalMs: 0,
     },
     errors: [],

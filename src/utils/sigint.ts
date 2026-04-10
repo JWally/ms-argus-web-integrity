@@ -6,16 +6,9 @@
  * - TCP Probe: TCP RTT, VPN/proxy detection
  * - H2 Probe: HTTP/2 protocol fingerprinting (SETTINGS, WINDOW_UPDATE, PRIORITY frames)
  * - STUN: WebRTC IP discovery
- * - Favicon Cache: Persistent device ID via browser favicon cache
  *
  * All endpoints are configurable via domain configuration.
  */
-
-import {
-  getFaviconCacheId,
-  type FaviconCacheData,
-  type FaviconCacheConfig as FaviconCacheConfigInternal,
-} from './favicon-cache';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -37,15 +30,6 @@ export interface SigintConfig {
   enableH2Probe?: boolean;
   /** Enable STUN for WebRTC IP discovery (default: false - requires user gesture) */
   enableStun?: boolean;
-  /** Enable favicon cache fingerprinting (default: true) */
-  enableFaviconCache?: boolean;
-  /** Favicon cache configuration */
-  faviconCache?: {
-    /** Number of bits (default: 32) */
-    bits?: number;
-    /** Path prefix on the id subdomain (default: "/fav") */
-    pathPrefix?: string;
-  };
 }
 
 /** Response from TLS Fingerprint Edge (CloudFront) */
@@ -249,15 +233,12 @@ export interface SigintData {
   h2Probe: H2ProbeResponse | EncryptedProbeResponse | ProbeTokenResponse | null;
   /** STUN/WebRTC data */
   stun: StunResult | null;
-  /** Favicon cache device ID */
-  faviconCache: FaviconCacheData | null;
   /** Collection timing */
   timing: {
     tlsFingerprintMs: number | null;
     tcpProbeMs: number | null;
     h2ProbeMs: number | null;
     stunMs: number | null;
-    faviconCacheMs: number | null;
     totalMs: number;
   };
   /** Any errors that occurred */
@@ -276,11 +257,6 @@ const DEFAULT_CONFIG: Required<SigintConfig> = {
   enableTcpProbe: true,
   enableH2Probe: true,
   enableStun: false,
-  enableFaviconCache: true,
-  faviconCache: {
-    bits: 32,
-    pathPrefix: '/fav',
-  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -342,38 +318,6 @@ export function getStunServerUri(config: SigintConfig): string {
   return `stun:${subdomain}.${merged.baseDomain}:3478`;
 }
 
-/**
- * Get the favicon cache base URL for integration with favicon-cache.ts.
- *
- * @param config - Sigint configuration specifying domain, stage, and favicon options
- * @returns Fully-qualified HTTPS URL pointing to the favicon cache path on the id subdomain
- */
-export function getFaviconCacheEndpoint(config: SigintConfig): string {
-  const merged = { ...DEFAULT_CONFIG, ...config };
-  const pathPrefix = merged.faviconCache?.pathPrefix || '/fav';
-  // Favicon cache is served from the same domain as TLS fingerprint (id subdomain)
-  return buildEndpoint(merged, 'id', pathPrefix + '/');
-}
-
-/**
- * Build the favicon cache configuration object for use with favicon-cache.ts.
- *
- * @param config - Sigint configuration specifying domain, stage, and favicon options
- * @returns Object containing baseUrl, bit count, and probe path for favicon cache operations
- */
-export function getFaviconCacheConfig(config: SigintConfig): {
-  baseUrl: string;
-  bits: number;
-  probePath: string;
-} {
-  const merged = { ...DEFAULT_CONFIG, ...config };
-  const faviconConfig = merged.faviconCache || DEFAULT_CONFIG.faviconCache;
-  return {
-    baseUrl: buildEndpoint(merged, 'id', ''),
-    bits: faviconConfig.bits || 32,
-    probePath: (faviconConfig.pathPrefix || '/fav') + '/',
-  };
-}
 
 /* ------------------------------------------------------------------ */
 /*  Fetch Helpers                                                      */
@@ -783,29 +727,6 @@ export async function performStunBinding(config: SigintConfig): Promise<{
 /*  Main Collector                                                     */
 /* ------------------------------------------------------------------ */
 
-/** Collect the favicon cache device ID, wrapping errors and recording timing. */
-async function collectFaviconCache(config: SigintConfig): Promise<{
-  data: FaviconCacheData | null;
-  error: string | null;
-  durationMs: number;
-}> {
-  const start = performance.now();
-  try {
-    const faviconConfig = getFaviconCacheConfig(config);
-    const data = await getFaviconCacheId({
-      baseUrl: faviconConfig.baseUrl,
-      bits: faviconConfig.bits,
-      probePath: faviconConfig.probePath,
-    });
-    return { data, error: null, durationMs: performance.now() - start };
-  } catch (err) {
-    return {
-      data: null,
-      error: err instanceof Error ? err.message : String(err),
-      durationMs: performance.now() - start,
-    };
-  }
-}
 
 /**
  * Collect all enabled sigint signals in parallel and return the combined result.
@@ -847,10 +768,6 @@ export async function collectSigintData(
     requestTypes.push('stun');
   }
 
-  if (merged.enableFaviconCache) {
-    requests.push(collectFaviconCache(config));
-    requestTypes.push('favicon');
-  }
 
   // Execute in parallel
   const results = await Promise.all(requests);
@@ -872,8 +789,6 @@ export async function collectSigintData(
   let h2ProbeMs: number | null = null;
   let stun: StunResult | null = null;
   let stunMs: number | null = null;
-  let faviconCache: FaviconCacheData | null = null;
-  let faviconCacheMs: number | null = null;
 
   for (let i = 0; i < results.length; i++) {
     const type = requestTypes[i];
@@ -912,10 +827,6 @@ export async function collectSigintData(
         stun = result.data as StunResult | null;
         stunMs = result.durationMs;
         break;
-      case 'favicon':
-        faviconCache = result.data as FaviconCacheData | null;
-        faviconCacheMs = result.durationMs;
-        break;
     }
   }
 
@@ -924,13 +835,11 @@ export async function collectSigintData(
     tcpProbe,
     h2Probe,
     stun,
-    faviconCache,
     timing: {
       tlsFingerprintMs,
       tcpProbeMs,
       h2ProbeMs,
       stunMs,
-      faviconCacheMs,
       totalMs: performance.now() - start,
     },
     errors,
@@ -951,8 +860,6 @@ export async function collectSigintData(
  * - sigintCookie: Enable cookie endpoint ("true"/"false")
  * - sigintTcpProbe: Enable TCP probe ("true"/"false")
  * - sigintStun: Enable STUN ("true"/"false")
- * - sigintFavicon: Enable favicon cache ("true"/"false")
- * - sigintFaviconBits: Number of favicon bits (default: 32)
  *
  * @param url - URL string or URL object from which to extract search parameters
  * @returns Partial sigint config populated from any recognized query parameters
@@ -988,16 +895,6 @@ export function parseSigintConfigFromUrl(
   const stun = searchParams.get('sigintStun');
   if (stun !== null) config.enableStun = stun === 'true';
 
-  const favicon = searchParams.get('sigintFavicon');
-  if (favicon !== null) config.enableFaviconCache = favicon !== 'false';
-
-  const faviconBits = searchParams.get('sigintFaviconBits');
-  if (faviconBits) {
-    const parsed = parseInt(faviconBits, 10);
-    if (!isNaN(parsed)) {
-      config.faviconCache = { bits: parsed };
-    }
-  }
 
   return config;
 }
@@ -1051,15 +948,6 @@ export function getThirdPartyCookieId(data: SigintData): string | null {
   return data.tlsFingerprint?.id || null;
 }
 
-/**
- * Get the persistent device ID derived from the browser's favicon cache.
- *
- * @param data - Collected sigint data containing favicon cache results
- * @returns Device ID string, or null if favicon cache data is unavailable
- */
-export function getFaviconCacheDeviceId(data: SigintData): string | null {
-  return data.faviconCache?.id || null;
-}
 
 /**
  * Get the HTTP/2 protocol fingerprint string.

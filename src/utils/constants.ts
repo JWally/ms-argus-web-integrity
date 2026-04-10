@@ -9,6 +9,5 @@ export const DATABASE_VERSION = 2;
 export const TABLE_NAME_KEYS = 'crypto-keys';
 export const INDEX_VALUE_KEY = 'primary';
 
-// Shared stores
+// Legacy store (kept for IndexedDB schema compatibility)
 export const EVERCOOKIE_DB_STORE = 'evercookie-store';
-export const EVERCOOKIE_KEY = 'device-id';
