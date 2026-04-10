@@ -20,7 +20,7 @@ import getTimingFingerprint from './timing';
 import { getTrash } from './trash';
 import getCSSMedia from './cssmedia';
 import getWebRTCData from './webrtc';
-import getBestWorkerScope, { spawnWorker } from './worker';
+import getBestWorkerScope from './worker';
 
 export interface IntegrityResult {
   meta: {
@@ -55,9 +55,7 @@ export async function collectIntegrity(): Promise<IntegrityResult> {
   const trash = getTrash();
 
   // Spawn worker early for cross-thread validation
-  const workerScopePromise = spawnWorker()
-    .then(() => getBestWorkerScope())
-    .catch(() => null);
+  const workerScopePromise = getBestWorkerScope().catch(() => null);
 
   // Parallel async checks (worker-independent)
   const [

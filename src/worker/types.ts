@@ -55,6 +55,44 @@ export interface WorkerGPUInfo extends Partial<RendererConfidence> {
 }
 
 /**
+ * Raw data collected from a worker scope (Blob worker or main thread).
+ */
+export interface WorkerScopeData {
+  lied: boolean;
+  lies: {
+    proto?: Record<string, string[]>;
+    os?: string;
+    engine?: string;
+    version?: string;
+    platformVersion?: string;
+  };
+  locale: string;
+  systemCurrencyLocale?: string;
+  engineCurrencyLocale: string;
+  localeEntropyIsTrusty: boolean;
+  localeIntlEntropyIsTrusty: boolean;
+  timezoneOffset: number;
+  timezoneLocation: string;
+  deviceMemory?: number;
+  hardwareConcurrency: number;
+  language: string;
+  languages: string;
+  platform: string;
+  userAgent: string;
+  webglRenderer?: string;
+  webglVendor?: string;
+  webgl2Renderer?: string;
+  webgl2Vendor?: string;
+  userAgentData?: Record<string, unknown>;
+  system?: string;
+  device?: string;
+  userAgentVersion?: string;
+  userAgentDataVersion?: string;
+  userAgentEngine?: string;
+  scopes?: Record<string, unknown>;
+}
+
+/**
  * Worker scope fingerprint result.
  */
 export interface WorkerScopeFingerprint {
