@@ -31,12 +31,6 @@ export default defineConfig({
           functions: 60,
           lines: 65,
         },
-        'src/utils/evercookie.ts': {
-          statements: 55,
-          branches: 55,
-          functions: 55,
-          lines: 55,
-        },
         'src/utils/delta.ts': {
           statements: 50,
           branches: 50,

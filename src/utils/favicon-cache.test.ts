@@ -348,18 +348,3 @@ describe('favicon-cache', () => {
   });
 });
 
-describe('favicon-cache integration with evercookie', () => {
-  it('can sync ID with evercookie', async () => {
-    // This test demonstrates how favicon cache can sync with evercookie
-    const { getEvercookieId } = await import('./evercookie');
-
-    // Get evercookie ID
-    const evercookieData = await getEvercookieId();
-    const evercookieIdShort = evercookieData.id.slice(0, 8);
-
-    // Set favicon cache to match (first 8 chars of UUID)
-    const faviconData = await setFaviconCacheId(evercookieIdShort);
-
-    expect(faviconData.id).toBe(evercookieIdShort);
-  });
-});

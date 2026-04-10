@@ -21,8 +21,6 @@ import {
   type SigintConfig,
 } from '../utils/sigint';
 import type { IntegrityResult } from '../integrity';
-import type { EvercookieData } from '../utils/evercookie';
-import type { CryptoKeys } from '../utils/get-crypto-id';
 
 let bytecodeCache: { bytecode: string; key: string } | null = null;
 
@@ -165,8 +163,6 @@ export async function runArgusVm(
   fingerprint: IntegrityResult,
   apiBase: string,
   sigintConfig?: SigintConfig,
-  evercookieData?: EvercookieData | null,
-  cryptoIdData?: CryptoKeys | null,
 ): Promise<ArgusVmResult> {
   const fallback: ArgusVmResult = {
     tampered: false,
