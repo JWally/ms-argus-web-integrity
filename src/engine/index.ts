@@ -200,8 +200,18 @@ function detectLayoutEngine(): LayoutEngine {
   try {
     const div = document.createElement('div');
 
+    // Gecko detection: MozAppearance was removed in modern Firefox (replaced by
+    // unprefixed `appearance`). Fall back to CSS.supports() for -moz- prefixes
+    // and MozBoxSizing which persists longer.
     // @ts-expect-error vendor prefix
     if (typeof div.style.MozAppearance !== 'undefined') {
+      return 'Gecko';
+    }
+    // @ts-expect-error vendor prefix — fallback for Firefox 148+ where MozAppearance is gone
+    if (typeof div.style.MozBoxSizing !== 'undefined') {
+      return 'Gecko';
+    }
+    if (typeof CSS !== 'undefined' && CSS.supports?.('-moz-appearance', 'none')) {
       return 'Gecko';
     }
 

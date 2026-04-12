@@ -213,7 +213,9 @@ export async function runArgusVm(
             session_id: crypto.randomUUID(),
           },
           device: {
+            css: fingerprint.css,
             engine: fingerprint.engine,
+            math: fingerprint.math,
             headless: fingerprint.headless,
             lies: fingerprint.lies,
             trash: fingerprint.trash,
@@ -227,6 +229,7 @@ export async function runArgusVm(
             timing: fingerprint.timing,
             cssMedia: fingerprint.cssMedia,
             webrtc: fingerprint.webrtc,
+            windowPrefixes: fingerprint.windowPrefixes,
             workerScope: fingerprint.workerScope,
             errors: fingerprint.errors,
           },

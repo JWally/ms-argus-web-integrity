@@ -47,8 +47,10 @@ export interface ICECandidateSummary {
 export interface WebRTCFingerprint {
   /** RTP header extensions from SDP — browser/OS-specific, useful for UA authenticity checks */
   extensions: string[];
-  /** ICE candidate foundation (stable per interface; WireGuard detection via KNOWN_FOUNDATIONS) */
+  /** Raw ICE candidate foundation value (stable per interface; classified server-side) */
   foundation: string;
+  /** Client-side label from KNOWN_FOUNDATIONS, if matched. Server does its own classification. */
+  foundationLabel: string | null;
   /** All collected ICE candidates with IP/type analysis */
   iceCandidates: ICECandidateSummary;
 }

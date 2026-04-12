@@ -177,6 +177,18 @@ const getWorkerData = async () => {
     product: navigator.product,
     onLine: navigator.onLine,
     globalPrivacyControl: navigator.globalPrivacyControl,
+    // Navigator property count — immune to extensions (workers don't run extensions).
+    // Changes per browser version as APIs are added to WorkerNavigator.
+    // Walk the prototype chain since properties live on WorkerNavigator.prototype, not the instance.
+    navigatorPropertyCount: (() => {
+      const seen = new Set();
+      let obj = navigator;
+      while (obj && obj !== Object.prototype) {
+        for (const k of Object.getOwnPropertyNames(obj)) seen.add(k);
+        obj = Object.getPrototypeOf(obj);
+      }
+      return seen.size;
+    })(),
     // Async probes
     connection,
     permissions,

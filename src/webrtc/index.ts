@@ -112,7 +112,8 @@ export default async function getWebRTCData(): Promise<WebRTCFingerprint | null>
 
       return resolve({
         extensions,
-        foundation: KNOWN_FOUNDATIONS[firstFoundation] || firstFoundation,
+        foundation: firstFoundation,
+        foundationLabel: KNOWN_FOUNDATIONS[firstFoundation] || null,
         iceCandidates: summarizeICECandidates(collectedCandidates),
       });
     };
