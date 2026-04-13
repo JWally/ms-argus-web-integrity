@@ -133,6 +133,15 @@ export interface ArgusVmContext {
    * which uses PHANTOM_DARKNESS (a shared singleton) and would clobber DOM state on a second call.
    */
   cssMedia?: CSSMediaFingerprint | null;
+  /**
+   * Optional callback invoked when the POST submission fails. Receives a
+   * short diagnostic string (HTTP status + statusText, or exception
+   * message). The bridge still returns '' to keep the VM flow simple;
+   * this side-channel lets the outer caller surface the actual failure
+   * reason back to the loader's postMessage rather than reporting an
+   * opaque 'submission_failed'. No-op if not provided.
+   */
+  onSubmissionError?: (detail: string) => void;
 }
 
 const HIDDEN_CSS =
@@ -723,10 +732,18 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
           },
           body: encrypted.buffer as ArrayBuffer,
         });
-        if (!resp.ok) return '';
+        if (!resp.ok) {
+          ctx.onSubmissionError?.(`http_${resp.status}_${resp.statusText || 'error'}`);
+          return '';
+        }
         const json = (await resp.json()) as Record<string, unknown>;
-        return (json.session_id as string) ?? '';
-      } catch {
+        const sid = (json.session_id as string) ?? '';
+        if (!sid) ctx.onSubmissionError?.('no_session_id_in_response');
+        return sid;
+      } catch (err) {
+        ctx.onSubmissionError?.(
+          `fetch_threw: ${(err as Error)?.message ?? 'unknown'}`,
+        );
         return '';
       }
     },

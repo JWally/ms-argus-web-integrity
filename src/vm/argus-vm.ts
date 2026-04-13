@@ -149,6 +149,13 @@ export interface ArgusVmResult {
   vm: {
     timezone?: VmTimezone;
   };
+  /**
+   * If the ECDH POST failed, this carries a short diagnostic string
+   * (e.g. "http_402_Payment_Required", "fetch_threw: network error").
+   * Only set when sessionId is empty — caller can use it to surface a
+   * useful error rather than reporting an opaque failure.
+   */
+  submissionError?: string;
 }
 
 /**
@@ -206,6 +213,7 @@ export async function runArgusVm(
     const mod = decode(binary.buffer as ArrayBuffer);
 
     let immolateSignals: string[] | null = null;
+    let submissionError: string | null = null;
     const ctx: ArgusVmContext = {
       getPayload: () => {
         return {
@@ -245,6 +253,9 @@ export async function runArgusVm(
       apiEndpoint: `${apiBase}/v1/integrity-collect`,
       sessionToken: handshake.sessionToken,
       h2Promise: _prefetchH2Slot ?? undefined,
+      onSubmissionError: (detail) => {
+        submissionError = detail;
+      },
     };
     const bridge = createArgusVmBridge(ctx);
 
@@ -269,6 +280,7 @@ export async function runArgusVm(
       vmSignals: immolateSignals ?? vmResult.signals,
       vmHash: vmResult.hash,
       vm: vmResult.vm ?? {},
+      ...(submissionError ? { submissionError } : {}),
     };
   } catch (err) {
     console.warn('[argus-vm] runArgusVm failed:', err);

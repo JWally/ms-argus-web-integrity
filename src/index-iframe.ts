@@ -91,10 +91,15 @@ async function main(): Promise<void> {
     // `argusDone: true` with an empty id (which would look like success
     // to the loader and blow up downstream on DDB lookup).
     if (!vm.sessionId) {
+      // vm.submissionError is set by the bridge when the POST failed
+      // (e.g. "http_402_Payment_Required" on KYC-gated proxies,
+      // "fetch_threw: ..." on CORS/network errors). Falls through to a
+      // generic string when the empty sessionId came from earlier in
+      // the VM (prefetch failure, handshake missing, etc.).
       postBack({
         argusDone: false,
         runId,
-        error: 'submission_failed',
+        error: vm.submissionError ?? 'submission_failed',
       });
       return;
     }

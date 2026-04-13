@@ -26,8 +26,19 @@ import {
   logTestResult,
 } from '../utils/helpers';
 import { expectFailure } from '../utils/expected-failure';
+import { getTopSameOriginWindow } from '../utils/top-window';
 
 import { CHROME_INDEX_RANGE } from './constants';
+
+// Collection runs inside the loader's srcdoc iframe. Window-scoped
+// APIs (screen, outer/inner dimensions, visualViewport) read from the
+// iframe by default — which on WebKit reports iframe size, and on
+// every browser reports iframe inner dimensions rather than the real
+// browser's outer chrome. Reach to the topmost same-origin window so
+// dimension-based headless heuristics don't false-positive on real
+// users whose browsers happen to be windowed inside the iframe's
+// perspective. No-op when at top-level.
+const topWin = getTopSameOriginWindow();
 import getPlatformEstimate from './getPlatformEstimate';
 import { getSystemFonts } from './getSystemFonts';
 import type {
@@ -90,16 +101,17 @@ async function hasBlankUaData(): Promise<boolean> {
 }
 
 function hasNoTaskbar(): boolean {
-  return (
-    screen.height === screen.availHeight && screen.width === screen.availWidth
-  );
+  const s = topWin.screen;
+  return s.height === s.availHeight && s.width === s.availWidth;
 }
 
 function hasVvpScreenRes(): boolean {
-  if (innerWidth === screen.width && outerHeight === screen.height) return true;
-  if (!('visualViewport' in window)) return false;
-  const vp = window.visualViewport;
-  return !!(vp && vp.width === screen.width && vp.height === screen.height);
+  const s = topWin.screen;
+  if (topWin.innerWidth === s.width && topWin.outerHeight === s.height)
+    return true;
+  if (!('visualViewport' in topWin)) return false;
+  const vp = topWin.visualViewport;
+  return !!(vp && vp.width === s.width && vp.height === s.height);
 }
 
 /**
@@ -124,11 +136,14 @@ function hasSoftwareRenderer(
 }
 
 function detectDevTools(): boolean {
-  if (outerWidth - innerWidth > 160 || outerHeight - innerHeight > 160) {
+  if (
+    topWin.outerWidth - topWin.innerWidth > 160 ||
+    topWin.outerHeight - topWin.innerHeight > 160
+  ) {
     return true;
   }
   // @ts-expect-error Firebug global
-  if (window.Firebug?.chrome?.isInitialized) return true;
+  if (topWin.Firebug?.chrome?.isInitialized) return true;
   return false;
 }
 
