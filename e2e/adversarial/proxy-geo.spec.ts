@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { chromium } from 'playwright';
-import { verifyServerSession, BASE_URL } from './helpers';
+import { fetchAdversarialRecord, BASE_URL } from './helpers';
 
 /**
  * SOAX residential proxy test — Ireland & UK exit nodes.
@@ -27,10 +27,13 @@ const GEO_TARGETS = [
 ];
 
 test.describe('adversarial: SOAX residential proxy', () => {
-  test.skip(!SOAX_PASS || !!process.env.SKIP_PROXY, 'PROXY_PASSWORD not set or SKIP_PROXY=1');
+  test.skip(
+    !SOAX_PASS || !!process.env.SKIP_PROXY,
+    'PROXY_PASSWORD not set or SKIP_PROXY=1',
+  );
 
   for (const target of GEO_TARGETS) {
-    test(`detects geo mismatch via ${target.label} proxy`, async ({ request }) => {
+    test(`detects geo mismatch via ${target.label} proxy`, async () => {
       const proxyUser = buildSoaxUser(target.cc);
 
       const browser = await chromium.launch({
@@ -45,58 +48,78 @@ test.describe('adversarial: SOAX residential proxy', () => {
 
       try {
         const page = await browser.newPage();
-        await page.goto(`${BASE_URL}/test-integrity.html`, {
+        await page.goto(`${BASE_URL}/test-loader.html`, {
           waitUntil: 'networkidle',
           timeout: 60_000,
         });
 
-        await expect(page.locator('#status')).toHaveText('idle');
-        await page.evaluate(() => (window as any).__runIntegrity());
-        await expect(page.locator('#status')).not.toHaveText('running', {
-          timeout: 60_000,
+        // Wait for loader to register
+        await expect
+          .poll(() =>
+            page.evaluate(
+              () =>
+                typeof (window as unknown as { argus?: unknown }).argus ===
+                'object',
+            ),
+          )
+          .toBeTruthy();
+
+        const result = await page.evaluate(async () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const argus = (window as any).argus;
+          return (await argus.run({
+            sessionId: `proxy-geo-${Date.now()}`,
+            timeoutMs: 60_000,
+          })) as {
+            sessionId: string;
+            argusSessionId: string;
+            durationMs: number;
+          };
         });
 
-        const status = await page.locator('#status').textContent();
-        const resultText = await page.locator('#result').textContent();
-        expect(status).not.toBe('error');
-
-        const result = JSON.parse(resultText!);
-        const fp = result.fingerprint;
+        const record = await fetchAdversarialRecord(result.argusSessionId);
+        const dev = (record.device ?? {}) as Record<string, unknown>;
+        const ana = (record.analysis ?? {}) as Record<string, unknown>;
+        const clientTz = (dev.timezone ?? {}) as {
+          location?: string;
+          offset?: number;
+        };
+        const tzAnalysis = (ana.timezone ?? {}) as {
+          lied?: boolean;
+          cfTimezone?: string;
+          clientTimezone?: string;
+          checks?: { locationMatchesCfTimezone?: boolean };
+        };
 
         console.log(`${target.label} proxy result:`, {
-          sessionId: result.sessionId,
-          tampered: result.tampered,
-          vmSignals: result.vmSignals,
-          clientTimezone: fp.timezone?.location,
-          clientOffset: fp.timezone?.offset,
+          sessionId: result.argusSessionId,
+          clientTimezone: clientTz.location,
+          clientOffset: clientTz.offset,
         });
 
-        // Session should still be accepted
-        expect(result.sessionId, 'Should get a session ID').toBeTruthy();
+        expect(result.argusSessionId, 'Should get a session ID').toBeTruthy();
+        expect(clientTz.location).toBeTruthy();
 
-        // Client timezone should be our local timezone (not the proxy's)
-        expect(fp.timezone?.location).toBeTruthy();
+        console.log(
+          `${target.label} server timezone analysis:`,
+          tzAnalysis,
+        );
 
-        // Verify server-side — check if timezone analysis caught the mismatch
-        const serverData = await verifyServerSession(result.sessionId, request);
-        const integrity = serverData.integrity ?? serverData;
-        const tzAnalysis = integrity.analysis?.timezone;
-
-        console.log(`${target.label} server timezone analysis:`, tzAnalysis);
-
-        // If CF timezone was available, it should differ from client timezone
-        if (tzAnalysis?.cfTimezone) {
+        if (tzAnalysis.cfTimezone) {
           expect(
             tzAnalysis.cfTimezone,
             `CF should report ${target.label} timezone, not client local`,
           ).not.toBe(tzAnalysis.clientTimezone);
 
           expect(
-            tzAnalysis.checks.locationMatchesCfTimezone,
+            tzAnalysis.checks?.locationMatchesCfTimezone,
             'Should detect geo mismatch',
           ).toBe(false);
 
-          expect(tzAnalysis.lied, 'Timezone analysis should flag as lied').toBe(true);
+          expect(
+            tzAnalysis.lied,
+            'Timezone analysis should flag as lied',
+          ).toBe(true);
         } else {
           console.warn(
             `CF timezone not available for ${target.label} — sigint may not be fully configured`,

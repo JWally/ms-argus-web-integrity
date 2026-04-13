@@ -449,25 +449,13 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         return '';
       }
       payload.vmHash = args[0] as string;
-      const vmSignals = args[1] as string[];
-      const tampered = args[2] as boolean;
+      // args[1] (vmSignals) and args[2] (tampered) are kept in the VM ABI
+      // for backward compatibility but are always [] / false now — the
+      // vm:* signal generation was stripped (see scripts/vm-src/main.ts
+      // history note). Server-side analyzers do classification.
       const tlsResult = args[3];
       const tcpToken = args[4];
       const h2Token = args[5];
-      if (vmSignals && vmSignals.length > 0) {
-        payload.vmSignals = vmSignals;
-      }
-      if (tampered) {
-        payload.tampered = true;
-        // Poison pill: even if the bot nulls out `tampered`, these signals cause
-        // the server to classify the session as a bot. The injection happens in
-        // the bridge (native JS), not in the VM bytecode — harder to hook.
-        const bs = payload.botSignals as Record<string, unknown>;
-        if (bs) {
-          bs.isHeadless = true;
-          bs.hasLies = true;
-        }
-      }
       if (tlsResult) {
         payload.sigintTls = tlsResult;
       }

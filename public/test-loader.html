@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Argus Loader Test</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+      section { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; border-radius: 4px; }
+      h2 { margin-top: 0; }
+      button { padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; }
+      pre { background: #f4f4f4; padding: 0.75rem; border-radius: 4px; overflow: auto; max-height: 240px; }
+      .status { font-weight: bold; }
+      .ok { color: green; }
+      .err { color: #c00; }
+      .muted { color: #666; font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <h1>Argus Loader Test</h1>
+    <p class="muted">
+      Serve this via <code>npm run dev</code> or <code>node server.js</code>, then open
+      <code>http://localhost:8000/test-loader.html</code>.
+      Inner bundle hits the stage baked in at build time (check <code>ARGUS_STAGE</code>).
+    </p>
+
+    <section>
+      <h2>1. Manual trigger (SPA-style)</h2>
+      <p class="muted">
+        Loader is included without <code>data-auto-run</code>, so it just exposes
+        <code>window.argus</code> and waits.
+      </p>
+      <button id="run-btn">argus.run()</button>
+      <button id="run-with-id">argus.run({ sessionId })</button>
+      <button id="destroy-btn">argus.destroy()</button>
+      <button id="inspect-btn">Show state</button>
+      <p>Status: <span id="status" class="status">idle</span></p>
+      <pre id="result">(not run yet)</pre>
+    </section>
+
+    <section>
+      <h2>2. What's in the DOM</h2>
+      <p class="muted">
+        While a run is in flight you should see one
+        <code>&lt;iframe data-argus-loader&gt;</code>. After resolve/reject/destroy it's gone.
+      </p>
+      <button id="dom-btn">Count iframes</button>
+      <pre id="dom-report">(click to check)</pre>
+    </section>
+
+    <!-- Loader. No data-auto-run — we drive it manually below. -->
+    <script src="/dist/argus-loader.iife.js"></script>
+
+    <script>
+      const statusEl = document.getElementById('status');
+      const resultEl = document.getElementById('result');
+
+      function setStatus(text, cls) {
+        statusEl.textContent = text;
+        statusEl.className = 'status ' + (cls || '');
+      }
+
+      // Programmatic entry point for automated tests (Playwright, curl-driven
+      // bots, etc.). Returns a Promise that resolves to the run result or
+      // rejects with the loader error. Also updates #status and #result so a
+      // human watching the page sees the same state.
+      window.__runArgus = async function (opts) {
+        if (!window.argus) {
+          setStatus('window.argus missing — loader didn\'t register', 'err');
+          throw new Error('window.argus missing');
+        }
+        setStatus('running…');
+        resultEl.textContent = '(waiting)';
+        try {
+          const t0 = performance.now();
+          const r = await window.argus.run(opts);
+          const dt = (performance.now() - t0).toFixed(0);
+          setStatus(`ok (${dt}ms)`, 'ok');
+          resultEl.textContent = JSON.stringify(r, null, 2);
+          return r;
+        } catch (err) {
+          setStatus('error', 'err');
+          const msg = (err && err.message) || String(err);
+          resultEl.textContent = msg;
+          throw err;
+        }
+      };
+
+      // Thin wrapper for button handlers — swallow rejection so we don't
+      // print unhandled-promise noise on the page; __runArgus already
+      // populated #status/#result.
+      function runArgus(opts) {
+        window.__runArgus(opts).catch(() => {});
+      }
+
+      document.getElementById('run-btn').addEventListener('click', () => runArgus());
+      document.getElementById('run-with-id').addEventListener('click', () =>
+        runArgus({ sessionId: `test-${Date.now()}`, timeoutMs: 15000 }),
+      );
+      document.getElementById('destroy-btn').addEventListener('click', () => {
+        window.argus?.destroy();
+        setStatus('destroyed');
+        resultEl.textContent = '(destroyed)';
+      });
+      document.getElementById('inspect-btn').addEventListener('click', () => {
+        resultEl.textContent = JSON.stringify(window.argus?._state, null, 2);
+      });
+
+      document.getElementById('dom-btn').addEventListener('click', () => {
+        const frames = document.querySelectorAll('iframe[data-argus-loader]');
+        const report = {
+          count: frames.length,
+          ids: Array.from(frames).map((f) => f.getAttribute('data-argus-loader')),
+          argusExists: !!window.argus,
+          state: window.argus?._state,
+        };
+        document.getElementById('dom-report').textContent = JSON.stringify(
+          report,
+          null,
+          2,
+        );
+      });
+    </script>
+  </body>
+</html>

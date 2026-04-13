@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { verifyServerSession } from './helpers';
+import { fetchAdversarialRecord } from './helpers';
 
 const SPOOF_SCRIPT = `
   Object.defineProperty(navigator, 'webdriver', { get: () => false });
@@ -12,51 +12,64 @@ const SPOOF_SCRIPT = `
 test.describe('adversarial: naive navigator spoofing', () => {
   test('lies scanner catches Object.defineProperty tampering', async ({
     page,
-    request,
   }) => {
-    // Inject spoofing before any page JS runs
+    // addInitScript runs on EVERY frame including the loader's srcdoc
+    // iframe, so the spoof lands in the collection realm. More
+    // pessimistic than a real bot (which can't reach into a child
+    // srcdoc), but tests that the lies scanner catches the patch
+    // regardless of which realm it was applied in.
     await page.addInitScript(SPOOF_SCRIPT);
 
-    await page.goto('/test-integrity.html');
-    await expect(page.locator('#status')).toHaveText('idle');
+    await page.goto('/test-loader.html');
 
-    await page.evaluate(() => (window as any).__runIntegrity());
-    await expect(page.locator('#status')).not.toHaveText('running', {
-      timeout: 30_000,
+    // Wait for loader to register window.argus
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            typeof (window as unknown as { argus?: unknown }).argus ===
+            'object',
+        ),
+      )
+      .toBeTruthy();
+
+    const result = await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const argus = (window as any).argus;
+      return (await argus.run({
+        sessionId: `naive-${Date.now()}`,
+        timeoutMs: 30_000,
+      })) as { sessionId: string; argusSessionId: string; durationMs: number };
     });
 
-    const status = await page.locator('#status').textContent();
-    const resultText = await page.locator('#result').textContent();
-    expect(status).not.toBe('error');
-
-    const result = JSON.parse(resultText!);
-    const fp = result.fingerprint;
+    const record = await fetchAdversarialRecord(result.argusSessionId);
+    const dev = (record.device ?? {}) as Record<string, unknown>;
+    const lies = (dev.lies ?? {}) as {
+      totalLies?: number;
+      data?: Record<string, unknown>;
+    };
+    const headless = (dev.headless ?? {}) as Record<string, unknown>;
 
     console.log('Naive spoofing result:', {
-      sessionId: result.sessionId,
-      tampered: result.tampered,
-      vmSignals: result.vmSignals,
-      totalLies: fp.lies?.totalLies,
-      liesData: fp.lies?.data ? Object.keys(fp.lies.data) : [],
-      headlessRating: fp.headless?.likeHeadlessRating,
+      sessionId: result.argusSessionId,
+      totalLies: lies.totalLies,
+      liesData: lies.data ? Object.keys(lies.data) : [],
+      headlessRating: headless.likeHeadlessRating,
     });
 
-    // Session should still work (server accepts spoofed sessions too)
-    expect(result.sessionId, 'Should get a session ID').toBeTruthy();
+    // Session landed
+    expect(result.argusSessionId, 'Should get a session ID').toBeTruthy();
 
     // Lies scanner should catch the defineProperty tampering
     expect(
-      fp.lies?.totalLies,
+      lies.totalLies,
       'Lie scanner should detect navigator property tampering',
     ).toBeGreaterThan(0);
 
     // Headless signals should still fire (Playwright is headless)
     expect(
-      fp.headless?.likeHeadlessRating,
+      headless.likeHeadlessRating as number,
       'Should still detect headless signals',
     ).toBeGreaterThan(0);
-
-    // Server-side verification
-    await verifyServerSession(result.sessionId, request);
   });
 });

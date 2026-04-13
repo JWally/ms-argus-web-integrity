@@ -6,210 +6,38 @@
 // Async APIs use __api_call_async; sync use __api_call / __api_get.
 //
 // Flow:
-//   1. Bot detection (signals array populated)
-//   2. Async sigint probe fetches (TLS, TCP, H2 — tokens stored)
-//   3. Integrity hash (XOR-fold of signal count + deploy secret)
-//   4. ECDH keygen → encrypt payload → POST → session_id
-//   5. Return { tampered, signals, hash, sessionId }
+//   1. Async sigint probe fetches (TLS, TCP, H2 — tokens stored)
+//   2. Integrity hash (XOR-fold of stable_hash + 0 + h2 token)
+//   3. ECDH keygen → encrypt payload → POST → session_id
+//   4. Return { tampered:false, signals:[], hash, sessionId, vm:{} }
+//
+// HISTORY (2026-04-13): The vm:* signal generation steps (formerly steps
+// 1-10.8) were stripped. Server-side analyzers (worker, timezone,
+// ip-consistency, ja4-ua) cover the cross-validation those signals were
+// trying to express, with TLS ground truth and ASN context the client
+// can't replicate. Bridge API IDs 0x01-0x12 are still registered but no
+// longer called from bytecode — kept for if/when we plumb the cross-realm
+// pristine captures into the device payload as raw witness data.
 
 const signals = [];
 let tmp = 0;
 let i = 0;
+const vm = {};
 
-// ── 1. navigator.webdriver ────────────────────────────────────────────
-tmp = __api_get(0x01);
-if (tmp === true) { tmp = signals.push('vm:webdriver'); }
-
-// ── 2. webdriver own descriptor (patched via defineProperty) ──────────
-tmp = __api_get(0x08);
-if (tmp === true) { tmp = signals.push('vm:webdriver_descriptor'); }
-
-// ── 3. Phantom iframe webdriver ───────────────────────────────────────
-tmp = __api_get(0x01);
-if (tmp === false) {
-  tmp = __api_call(0x09);
-  if (tmp === true) { tmp = signals.push('vm:phantom_webdriver'); }
-}
-
-// ── 4. Window litter — bot-injected globals ───────────────────────────
-let winProps = __api_call(0x02);
-let litFound = false;
-i = 0;
-while (i < winProps.length) {
-  if (litFound === false) {
-    tmp = winProps[i];
-    if (tmp.includes('__bot')) litFound = true;
-    if (tmp.includes('__solver')) litFound = true;
-    if (tmp.includes('__captcha')) litFound = true;
-    if (tmp.includes('__hook')) litFound = true;
-    if (tmp.includes('__pw_')) litFound = true;
-    if (tmp.includes('__playwright')) litFound = true;
-    if (tmp.includes('__puppeteer')) litFound = true;
-    if (tmp.includes('_phantom')) litFound = true;
-    if (tmp.includes('__selenium')) litFound = true;
-    if (tmp.includes('__webdriver')) litFound = true;
-    if (tmp.includes('__driver')) litFound = true;
-  }
-  i = i + 1;
-}
-if (litFound) { tmp = signals.push('vm:litter'); }
-winProps = 0;
-litFound = false;
-
-// ── 5. Document litter — ChromeDriver cdc_ globals ───────────────────
-let docProps = __api_call(0x03);
-i = 0;
-while (i < docProps.length) {
-  if (docProps[i].includes('cdc_')) {
-    tmp = signals.push('vm:cdc_global');
-    i = docProps.length;
-  }
-  i = i + 1;
-}
-docProps = 0;
-
-// ── 6. toString checks — native code? (main-thread captured) ─────────
-// 0x0D = PTR_GET_COALESCED_STR, 0x0E = PTR_GET_PREDICTED_STR, 0x0F = PERF_NOW_STR
-// 0x05 = NATIVE_REGEX_TEST
-tmp = __api_get(0x0d);
-if (tmp.length > 0 && __api_call(0x05, tmp) === false) {
-  tmp = signals.push('vm:getCoalesced_patched');
-}
-
-tmp = __api_get(0x0e);
-if (tmp.length > 0 && __api_call(0x05, tmp) === false) {
-  tmp = signals.push('vm:getPredicted_patched');
-}
-
-tmp = __api_get(0x0f);
-if (tmp.length > 0 && __api_call(0x05, tmp) === false) {
-  tmp = signals.push('vm:perfNow_patched');
-}
-
-// ── 7. Cross-realm toString disagrees with main-thread toString ───────
-// 0x10 = XREALM_COALESCED_STR, 0x11 = XREALM_PREDICTED_STR, 0x12 = XREALM_PERF_NOW_STR
-tmp = __api_get(0x0d);
-if (tmp.length > 0) {
-  let xr = __api_get(0x10);
-  if (xr.length > 0 && xr !== tmp) { tmp = signals.push('vm:xrealm_coalesced'); }
-  xr = 0;
-}
-
-tmp = __api_get(0x0e);
-if (tmp.length > 0) {
-  let xr = __api_get(0x11);
-  if (xr.length > 0 && xr !== tmp) { tmp = signals.push('vm:xrealm_predicted'); }
-  xr = 0;
-}
-
-tmp = __api_get(0x0f);
-if (tmp.length > 0) {
-  let xr = __api_get(0x12);
-  if (xr.length > 0 && xr !== tmp) { tmp = signals.push('vm:xrealm_perfNow'); }
-  xr = 0;
-}
-
-// ── 8. Plugin count — headless Chrome has 0 plugins ──────────────────
-tmp = __api_get(0x06);
-if (tmp === 0) { tmp = signals.push('vm:no_plugins'); }
-
-// ── 9. Chrome object — real Chrome always has window.chrome ──────────
-tmp = __api_get(0x07);
-if (tmp === false) { tmp = signals.push('vm:no_chrome'); }
-
-// ── 10. Screen taskbar — no taskbar = virtual display ────────────────
-tmp = __api_get(0x0a);
-if (tmp === true) { tmp = signals.push('vm:no_taskbar'); }
-
-// ── 10.5. Timezone cross-validation ──────────────────────────────────
-// Bridge captures these at construction time via pristine refs.
-// A bot that patches Date.getTimezoneOffset AFTER bridge construction
-// will show a mismatch between tzOffset (pristine) and tzComputed (parse-based).
-let tzOffset = __api_get(0x17);
-let tzComputed = __api_get(0x18);
-let tzLocation = __api_get(0x19);
-let tzZone = __api_get(0x1a);
-if (tzOffset !== tzComputed) {
-  tmp = signals.push('vm:tz_offset_mismatch');
-}
-
-// ── 10.6. Worker scope cross-validation ──────────────────────────────
-// Bridge spawns fresh SharedWorker + DedicatedWorker, collects navigator
-// data from each, cross-compares with main thread, runs lie detection.
-// Runs independently of collectIntegrity() so we can verify parity.
-// Reuse tmp to avoid allocating new registers (budget is tight).
-// Build vm object first to capture tmp (wsData) before signal checks overwrite it.
-// Step 13 also overwrites tmp with the ECDH keypair — vm must be built before that.
-tmp = __api_call_async(0x1b);
-const vm = {
-  timezone: {
-    offset: tzOffset,
-    offsetComputed: tzComputed,
-    location: tzLocation,
-    zone: tzZone,
-  },
-  workerScope: tmp,
-};
-tmp = 0;
-if (vm.workerScope.best.length === 0) {
-  tmp = signals.push('vm:worker_unavailable');
-}
-if (vm.workerScope.lied === true) {
-  tmp = signals.push('vm:worker_lied');
-}
-if (vm.workerScope.localeEntropyIsTrusty === false) {
-  tmp = signals.push('vm:locale_entropy_untrusty');
-}
-if (vm.workerScope.localeIntlEntropyIsTrusty === false) {
-  tmp = signals.push('vm:locale_intl_entropy_untrusty');
-}
-
-// ── 10.7. WebRTC cross-validation ────────────────────────────────────
-// Runs getWebRTCData() fresh — independent of collectIntegrity() — so
-// results can be compared for parity and tampering.
-// Stored in vm.webrtc via member assignment (reuses tmp, no new register).
-tmp = __api_call_async(0x1c);
-vm.webrtc = tmp;
-tmp = 0;
-if (vm.webrtc === null) {
-  tmp = signals.push('vm:webrtc_unavailable');
-} else {
-  if (vm.webrtc.iceCandidates.hasMDNS === false && vm.webrtc.iceCandidates.hasPrivateIP === true) {
-    tmp = signals.push('vm:webrtc_raw_ip');
-  }
-}
-
-// ── 10.8. CSS Media cross-validation ─────────────────────────────────
-// Bridge calls getCSSMedia() (sync) and normalizes into a flat camelCase object.
-// pointer/pointerCSS: matchMedia vs CSS cross-check (mismatch = patched matchMedia).
-// screenW vs reportedW: CSS query vs JS screen API (mismatch = screen API spoofed).
-tmp = __api_call(0x1d);
-vm.cssMedia = tmp;
-tmp = 0;
-if (vm.cssMedia !== null) {
-  if (vm.cssMedia.pointer === 'none') {
-    tmp = signals.push('vm:css_pointer_none');
-  }
-  if (vm.cssMedia.hasMismatch === true) {
-    tmp = signals.push('vm:css_matchmedia_mismatch');
-  }
-  if (vm.cssMedia.screenW !== vm.cssMedia.reportedW) {
-    tmp = signals.push('vm:css_screen_mismatch');
-  }
-}
-
-// ── 11. Async sigint probe fetches ────────────────────────────────────
+// ── 1. Async sigint probe fetches ─────────────────────────────────────
 // These run in parallel at the bridge level; VM executes them sequentially
 // but the bridge makes real fetch() calls. Tokens are opaque strings.
 let tlsResult = __api_call_async(0x40);
 let tcpToken = __api_call_async(0x41);
 let h2Token = __api_call_async(0x42);
 
-// ── 12. Integrity hash — stable fingerprint hash + signal count + h2 token ──
+// ── 2. Integrity hash — stable fingerprint hash + signal count + h2 token ──
 // GET_STABLE_HASH (0x16) returns fingerprint.hashes.stable from the bridge context.
-// Tying the hash to the stable fingerprint hash means a forged payload with a different
-// stable hash will produce a mismatching vmHash — detectable server-side.
+// Tying the hash to the stable fingerprint hash means a forged payload with a
+// different stable hash will produce a mismatching vmHash — detectable server-side.
 // h2Token binds the hash to this specific probe session (verified after decryption).
+// signal count is always 0 now (vm:* signals removed) but the slot is preserved
+// to keep the hash format stable for any server-side validators that parsed it.
 let stableHash = __api_get(0x16);
 let h = '';
 h = h + stableHash;
@@ -225,7 +53,7 @@ while (i < h.length) {
   i = i + 1;
 }
 
-// ── 13. ECDH encrypt + POST ───────────────────────────────────────────
+// ── 3. ECDH encrypt + POST ────────────────────────────────────────────
 let serverPubKey = __api_get(0x14);
 let sessionId = '';
 let publicKeyB64 = '';
@@ -237,11 +65,13 @@ if (serverPubKey.length > 0) {
 
   // Build payload JSON:
   //   args: (vmHash, vmSignals, tampered, tlsResult, tcpToken, h2Token)
+  // vmSignals is always [] and tampered is always false — server-side
+  // analyzers do the actual classification work.
   let payloadJSON = __api_call(
     0x13,
     String(hv),
     signals,
-    signals.length > 0,
+    false,
     tlsResult,
     tcpToken,
     h2Token,
@@ -289,7 +119,7 @@ tcpToken = 0;
 h2Token = 0;
 
 const result = {
-  tampered: signals.length > 0,
+  tampered: false,
   signals: signals,
   hash: String(hv),
   sessionId: sessionId,

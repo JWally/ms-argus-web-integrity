@@ -1,9 +1,12 @@
 import { test, expect } from '@playwright/test';
 import puppeteer from 'puppeteer';
-import { runIntegrityPuppeteer, verifyServerSession } from './helpers';
+import { runIntegrityPuppeteer, fetchAdversarialRecord } from './helpers';
 
 test.describe('adversarial: vanilla puppeteer', () => {
-  test('detects headless puppeteer without evasion', async ({ request }) => {
+  test('detects headless puppeteer without evasion', async ({ browserName }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    void browserName;
+
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -12,37 +15,36 @@ test.describe('adversarial: vanilla puppeteer', () => {
     try {
       const page = await browser.newPage();
       const result = await runIntegrityPuppeteer(page);
-      const fp = result.fingerprint;
+
+      // Fetch the server-stored record — all fingerprint assertions live
+      // here now. No fingerprint data reaches the parent-realm test
+      // context (loader returns only {argusSessionId, sessionId,
+      // durationMs}), so we read from DDB.
+      const record = await fetchAdversarialRecord(result.argusSessionId);
+      const dev = (record.device ?? {}) as Record<string, unknown>;
+      const headless = (dev.headless ?? {}) as Record<string, unknown>;
 
       console.log('Vanilla Puppeteer result:', {
-        sessionId: result.sessionId,
-        tampered: result.tampered,
-        vmSignals: result.vmSignals,
-        headlessRating: fp.headless?.likeHeadlessRating,
-        stealthRating: fp.headless?.stealthRating,
-        totalLies: fp.lies?.totalLies,
+        sessionId: result.argusSessionId,
+        headlessRating: headless.likeHeadlessRating,
+        stealthRating: headless.stealthRating,
+        totalLies: (dev.lies as { totalLies?: number } | undefined)?.totalLies,
       });
 
-      // Session should be accepted by server
-      expect(result.sessionId, 'Should get a session ID').toBeTruthy();
+      // Session landed
+      expect(result.argusSessionId, 'Should get a session ID').toBeTruthy();
 
-      // Headless detection
-      expect(fp.headless, 'headless detection should run').toBeTruthy();
+      // Headless module ran
+      expect(headless, 'headless detection should run').toBeTruthy();
       expect(
-        fp.headless.headless?.webDriverIsOn,
+        (headless.headless as { webDriverIsOn?: boolean } | undefined)
+          ?.webDriverIsOn,
         'navigator.webdriver should be detected',
       ).toBe(true);
       expect(
-        fp.headless.likeHeadlessRating,
+        headless.likeHeadlessRating as number,
         'should trigger headless soft signals',
       ).toBeGreaterThan(0);
-
-      // VM should detect webdriver
-      expect(result.vmSignals).toContain('vm:webdriver');
-      expect(result.tampered).toBe(true);
-
-      // Server-side verification
-      await verifyServerSession(result.sessionId, request);
     } finally {
       await browser.close();
     }

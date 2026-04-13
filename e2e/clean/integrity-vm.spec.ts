@@ -127,13 +127,17 @@ test.describe('integrity VM end-to-end', () => {
     }
     // WebKit may not support WebRTC in Playwright — don't hard-fail
 
-    // ── D. Browser-specific VM signal checks ─────────────────────────
+    // ── D. Webdriver detection check ─────────────────────────────────
+    // The VM no longer emits vm:* signal strings (stripped 2026-04-13).
+    // Detection assertion now reads from the headless module's
+    // webDriverIsOn signal — fed by navigator.webdriver, lieProps, and
+    // the modern-Chrome-with-undefined-webdriver heuristic.
     if (browserName === 'chromium') {
       // Playwright Chromium always sets navigator.webdriver = true
       expect(
-        clientResult.vmSignals,
-        'Chromium should detect webdriver',
-      ).toContain('vm:webdriver');
+        fp.headless?.headless?.webDriverIsOn,
+        'Chromium should detect webdriver via headless module',
+      ).toBe(true);
     }
 
     // ── E. Server-side verification ──────────────────────────────────

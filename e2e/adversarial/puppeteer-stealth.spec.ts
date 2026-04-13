@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { runIntegrityPuppeteer, verifyServerSession } from './helpers';
+import { runIntegrityPuppeteer, fetchAdversarialRecord } from './helpers';
 
 puppeteerExtra.use(StealthPlugin());
 
 test.describe('adversarial: puppeteer-stealth', () => {
-  test('detects stealth plugin evasion artifacts', async ({ request }) => {
+  test('detects stealth plugin evasion artifacts', async () => {
     const browser = await puppeteerExtra.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -15,25 +15,26 @@ test.describe('adversarial: puppeteer-stealth', () => {
     try {
       const page = await browser.newPage();
       const result = await runIntegrityPuppeteer(page);
-      const fp = result.fingerprint;
+
+      const record = await fetchAdversarialRecord(result.argusSessionId);
+      const dev = (record.device ?? {}) as Record<string, unknown>;
+      const headless = (dev.headless ?? {}) as Record<string, unknown>;
+      const stealth = (headless.stealth ?? {}) as Record<string, boolean>;
+      const lies = (dev.lies ?? {}) as { totalLies?: number };
 
       console.log('Puppeteer-stealth result:', {
-        sessionId: result.sessionId,
-        tampered: result.tampered,
-        vmSignals: result.vmSignals,
-        headlessRating: fp.headless?.likeHeadlessRating,
-        stealthRating: fp.headless?.stealthRating,
-        headlessSignals: fp.headless?.headless,
-        stealthSignals: fp.headless?.stealth,
-        totalLies: fp.lies?.totalLies,
+        sessionId: result.argusSessionId,
+        headlessRating: headless.likeHeadlessRating,
+        stealthRating: headless.stealthRating,
+        headlessSignals: headless.headless,
+        stealthSignals: stealth,
+        totalLies: lies.totalLies,
       });
 
-      // Session should be accepted by server
-      expect(result.sessionId, 'Should get a session ID').toBeTruthy();
+      expect(result.argusSessionId, 'Should get a session ID').toBeTruthy();
 
-      // Stealth plugin should leave detectable artifacts.
-      // At least one of these should be true:
-      const stealth = fp.headless?.stealth ?? {};
+      // Stealth plugin should leave detectable artifacts — any one path
+      // is sufficient; we just need detection to fire.
       const stealthSignals = [
         stealth.hasToStringProxy,
         stealth.hasBadChromeRuntime,
@@ -44,17 +45,16 @@ test.describe('adversarial: puppeteer-stealth', () => {
         stealth.hasBadWebGL,
       ];
       const stealthDetected = stealthSignals.some(Boolean);
-      const liesDetected = (fp.lies?.totalLies ?? 0) > 0;
-      const headlessDetected = (fp.headless?.likeHeadlessRating ?? 0) > 0;
+      const liesDetected = (lies.totalLies ?? 0) > 0;
+      const headlessDetected =
+        ((headless.likeHeadlessRating as number) ?? 0) > 0;
 
       expect(
         stealthDetected || liesDetected || headlessDetected,
         `Stealth should be detected via at least one signal. ` +
-        `stealth=${JSON.stringify(stealth)}, lies=${fp.lies?.totalLies}, headlessRating=${fp.headless?.likeHeadlessRating}`,
+          `stealth=${JSON.stringify(stealth)}, lies=${lies.totalLies}, ` +
+          `headlessRating=${headless.likeHeadlessRating}`,
       ).toBe(true);
-
-      // Server-side verification
-      await verifyServerSession(result.sessionId, request);
     } finally {
       await browser.close();
     }

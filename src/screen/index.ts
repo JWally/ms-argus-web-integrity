@@ -30,8 +30,16 @@ import {
   LowerEntropy,
 } from '../utils/helpers';
 import { expectFailure } from '../utils/expected-failure';
+import { getTopSameOriginWindow } from '../utils/top-window';
 import { TASKBAR_DETECTION_THRESHOLD } from './constants';
 import type { ScreenFingerprint } from './types';
+
+// Collection runs inside a srcdoc iframe. WebKit reports window.screen
+// as the iframe's frame size; Chromium/Firefox look through to the real
+// device screen. Reading from the topmost same-origin window normalizes
+// all three. No-op when already at top (e.g. library consumers calling
+// collectIntegrity() from the parent realm directly).
+const topWin = getTopSameOriginWindow();
 
 /**
  * Detects touch screen capability.
@@ -66,7 +74,7 @@ function hasTouch(): boolean {
  * @returns True if dimensions match media query
  */
 function validateScreenDimensions(width: number, height: number): boolean {
-  return matchMedia(
+  return topWin.matchMedia(
     `(device-width: ${width}px) and (device-height: ${height}px)`,
   ).matches;
 }
@@ -82,7 +90,7 @@ function validateScreenDimensions(width: number, height: number): boolean {
  * @returns True if DPR matches media query
  */
 function validateDevicePixelRatio(dpr: number): boolean {
-  return matchMedia(`(resolution: ${dpr}dppx)`).matches;
+  return topWin.matchMedia(`(resolution: ${dpr}dppx)`).matches;
 }
 
 /**
@@ -158,13 +166,15 @@ export default async function getScreen(
     // Check for API tampering
     let lied = detectScreenLies();
 
-    // Get screen dimensions
-    const s = window.screen || {};
+    // Get screen dimensions from the topmost same-origin window — see
+    // topWin note at module top. WebKit in an iframe reports iframe-size
+    // via window.screen; reaching up fixes it.
+    const s = topWin.screen || {};
     const { width, height, availWidth, availHeight, colorDepth, pixelDepth } =
       s;
 
     // Validate dimensions against media queries (with browser exceptions)
-    const dpr = window.devicePixelRatio || 0;
+    const dpr = topWin.devicePixelRatio || 0;
     const firefoxWithHighDPR = IS_GECKO && dpr !== 1;
 
     if (!firefoxWithHighDPR) {

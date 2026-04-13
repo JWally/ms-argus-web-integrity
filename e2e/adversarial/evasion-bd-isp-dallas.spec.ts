@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import puppeteer from 'puppeteer';
-import { runIntegrityPuppeteer, verifyServerSession } from './helpers';
+import { runIntegrityPuppeteer, fetchAdversarialRecord } from './helpers';
 
 /**
  * Maximum evasion bot — Bright Data ISP proxy variant (Dallas):
@@ -37,7 +37,7 @@ const BD_USER_BASE = 'brd-customer-hl_d1f42c2a-zone-isp_proxy1-country-us';
 test.describe('adversarial: Bright Data ISP proxy bot (Dallas)', () => {
   test.skip(!BD_PASS || !!process.env.SKIP_PROXY, 'PROXY_PASSWORD_BD not set or SKIP_PROXY=1');
 
-  test('puppeteer + BD ISP Dallas proxy + IPv4 spoof + IPv6 drop', async ({ request }) => {
+  test('puppeteer + BD ISP Dallas proxy + IPv4 spoof + IPv6 drop', async () => {
     // Fresh session token per run → pinned exit IP for this test only
     const sessionToken = `argus${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     const BD_USER = `${BD_USER_BASE}-session-${sessionToken}`;
@@ -170,59 +170,88 @@ test.describe('adversarial: Bright Data ISP proxy bot (Dallas)', () => {
       }, proxyIp);
 
       const result = await runIntegrityPuppeteer(page);
-      const fp = result.fingerprint;
+      const record = await fetchAdversarialRecord(result.argusSessionId);
+      const dev = (record.device ?? {}) as Record<string, unknown>;
+      const ana = (record.analysis ?? {}) as Record<string, unknown>;
+      const headless = (dev.headless ?? {}) as Record<string, unknown>;
+      const lies = (dev.lies ?? {}) as {
+        totalLies?: number;
+        data?: Record<string, unknown>;
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const worker = (ana.worker ?? {}) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const timezone = (ana.timezone ?? {}) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ip = (ana.ip ?? {}) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const network = (ana.network ?? {}) as any;
 
       console.log('\n=== BRIGHT DATA ISP DALLAS BOT ===');
-      console.log('Session:', result.sessionId);
-      console.log('Tampered:', result.tampered);
-      console.log('VM Signals:', result.vmSignals);
-      console.log('Headless rating:', fp.headless?.likeHeadlessRating);
-      console.log('Headless hard:', fp.headless?.headless);
-      console.log('Stealth rating:', fp.headless?.stealthRating);
-      console.log('Total lies:', fp.lies?.totalLies);
-      console.log('Lies data:', fp.lies?.data ? Object.keys(fp.lies.data) : []);
-      console.log('WebRTC:', fp.webrtc);
-      console.log('Client TZ:', fp.timezone?.location);
-      console.log('Client offset:', fp.timezone?.offset);
-      console.log('Computed offset:', fp.timezone?.offsetComputed);
+      console.log('Session:', result.argusSessionId);
+      console.log('Headless rating:', headless.likeHeadlessRating);
+      console.log('Headless hard:', headless.headless);
+      console.log('Stealth rating:', headless.stealthRating);
+      console.log('Total lies:', lies.totalLies);
+      console.log('Lies data:', lies.data ? Object.keys(lies.data) : []);
+      console.log('WebRTC:', dev.webrtc);
+      console.log(
+        'Client TZ:',
+        (dev.timezone as { location?: string })?.location,
+      );
+      console.log(
+        'Client offset:',
+        (dev.timezone as { offset?: number })?.offset,
+      );
+      console.log(
+        'Computed offset:',
+        (dev.timezone as { offsetComputed?: number })?.offsetComputed,
+      );
 
-      expect(result.sessionId).toBeTruthy();
-      const serverData = await verifyServerSession(result.sessionId, request);
-      const analysis = (serverData.integrity ?? serverData).analysis;
+      expect(result.argusSessionId).toBeTruthy();
 
       console.log('\n=== SERVER ANALYSIS ===');
-      console.log('Worker lied:', analysis?.worker?.lied);
-      console.log('Worker divergences:', analysis?.worker?.divergences?.map((d: any) => d.field));
-      console.log('Timezone lied:', analysis?.timezone?.lied);
-      console.log('Timezone CF:', analysis?.timezone?.cfTimezone);
-      console.log('Timezone client:', analysis?.timezone?.clientTimezone);
-      console.log('TZ checks:', analysis?.timezone?.checks);
-      console.log('IP lied:', analysis?.ip?.lied);
-      console.log('IP probes consistent:', analysis?.ip?.checks?.probesConsistent);
-      console.log('IP WebRTC matches:', analysis?.ip?.checks?.webrtcMatchesProbes);
-      console.log('IP addresses:', analysis?.ip?.ips);
-      console.log('IP ASN:', analysis?.ip?.asn);
-      console.log('Network proxy_score:', analysis?.network?.proxy_score);
-      console.log('Network vpn_score:', analysis?.network?.vpn_score);
-      console.log('Network signals:', analysis?.network?.signals);
+      console.log('Worker lied:', worker.lied);
+      console.log(
+        'Worker divergences:',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        worker.divergences?.map((d: any) => d.field),
+      );
+      console.log('Timezone lied:', timezone.lied);
+      console.log('Timezone CF:', timezone.cfTimezone);
+      console.log('Timezone client:', timezone.clientTimezone);
+      console.log('TZ checks:', timezone.checks);
+      console.log('IP lied:', ip.lied);
+      console.log('IP probes consistent:', ip.checks?.probesConsistent);
+      console.log('IP WebRTC matches:', ip.checks?.webrtcMatchesProbes);
+      console.log('IP addresses:', ip.ips);
+      console.log('IP ASN:', ip.asn);
+      console.log('Network proxy_score:', network.proxy_score);
+      console.log('Network vpn_score:', network.vpn_score);
+      console.log('Network signals:', network.signals);
 
       const allSignals = [
-        ...(analysis?.worker?.signals ?? []),
-        ...(analysis?.timezone?.signals ?? []),
-        ...(analysis?.ip?.signals ?? []),
-        ...(analysis?.network?.signals ?? []),
+        ...(worker.signals ?? []),
+        ...(timezone.signals ?? []),
+        ...(ip.signals ?? []),
+        ...(network.signals ?? []),
       ];
       console.log('\n=== ALL SIGNALS ===');
       for (const s of allSignals) {
         console.log(`  ${s.code} (${s.severity}): ${s.evidence}`);
       }
       console.log(`Total signals: ${allSignals.length}`);
-      console.log('Modules that flagged lied:', [
-        analysis?.worker?.lied && 'worker',
-        analysis?.timezone?.lied && 'timezone',
-        analysis?.ip?.lied && 'ip',
-        (analysis?.network?.proxy_score > 0 || analysis?.network?.vpn_score > 0) && 'network',
-      ].filter(Boolean));
+      console.log(
+        'Modules that flagged lied:',
+        [
+          worker.lied && 'worker',
+          timezone.lied && 'timezone',
+          ip.lied && 'ip',
+          ((network.proxy_score ?? 0) > 0 ||
+            (network.vpn_score ?? 0) > 0) &&
+            'network',
+        ].filter(Boolean),
+      );
     } finally {
       await browser.close();
     }
