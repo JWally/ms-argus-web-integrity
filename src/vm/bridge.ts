@@ -22,6 +22,7 @@ import {
 import getBestWorkerScope from '../worker';
 import getWebRTCData from '../webrtc';
 import type { CSSMediaFingerprint } from '../cssmedia/types';
+import { getCryptoId, signWithCryptoId } from '../utils/get-crypto-id';
 
 export interface ApiHandler {
   get?: () => unknown;
@@ -52,64 +53,71 @@ export class ApiBridge {
   }
 }
 
-/** Bridge API IDs for argus-web */
-export const BridgeApi = {
+/**
+ * Bridge API IDs for argus-web.
+ *
+ * `const enum`: TypeScript inlines every `BridgeApi.FOO` reference to its
+ * numeric literal at compile time and emits no runtime object. The names
+ * never appear in the shipped bundle — prevents the Rosetta-stone problem
+ * where a reverser could map bridge handler IDs back to semantic labels.
+ */
+export const enum BridgeApi {
   // ── Detection APIs ─────────────────────────────────────────────
-  NAV_WEBDRIVER: 0x01,
-  WIN_GET_OWN_PROP_NAMES: 0x02,
-  DOC_GET_OWN_PROP_NAMES: 0x03,
-  FN_TO_STRING: 0x04,
-  NATIVE_REGEX_TEST: 0x05,
-  PLUGINS_LENGTH: 0x06,
-  CHROME_EXISTS: 0x07,
-  NAV_WEBDRIVER_OWN: 0x08,
-  PHANTOM_WEBDRIVER: 0x09,
-  SCREEN_NO_TASKBAR: 0x0a,
-  IFRAME_TO_STRING: 0x0b,
-  GET_OWN_PROP_DESCRIPTOR: 0x0c,
+  NAV_WEBDRIVER = 0x01,
+  WIN_GET_OWN_PROP_NAMES = 0x02,
+  DOC_GET_OWN_PROP_NAMES = 0x03,
+  FN_TO_STRING = 0x04,
+  NATIVE_REGEX_TEST = 0x05,
+  PLUGINS_LENGTH = 0x06,
+  CHROME_EXISTS = 0x07,
+  NAV_WEBDRIVER_OWN = 0x08,
+  PHANTOM_WEBDRIVER = 0x09,
+  SCREEN_NO_TASKBAR = 0x0a,
+  IFRAME_TO_STRING = 0x0b,
+  GET_OWN_PROP_DESCRIPTOR = 0x0c,
   // Pointer event toString checks — general bot signals
-  PTR_GET_COALESCED_STR: 0x0d,
-  PTR_GET_PREDICTED_STR: 0x0e,
-  PERF_NOW_STR: 0x0f,
-  XREALM_COALESCED_STR: 0x10,
-  XREALM_PREDICTED_STR: 0x11,
-  XREALM_PERF_NOW_STR: 0x12,
+  PTR_GET_COALESCED_STR = 0x0d,
+  PTR_GET_PREDICTED_STR = 0x0e,
+  PERF_NOW_STR = 0x0f,
+  XREALM_COALESCED_STR = 0x10,
+  XREALM_PREDICTED_STR = 0x11,
+  XREALM_PERF_NOW_STR = 0x12,
 
   // ── Crypto context APIs ────────────────────────────────────────
-  GET_PAYLOAD_JSON: 0x13, // fingerprint + sigint tokens + bot signals + vmHash
-  GET_SERVER_PUB_KEY: 0x14,
-  IMMOLATE: 0x15, // sets tamper=true in payload; server uses as signal
-  GET_STABLE_HASH: 0x16, // fingerprint.hashes.stable — tied into vmHash
+  GET_PAYLOAD_JSON = 0x13, // fingerprint + sigint tokens + bot signals + vmHash
+  GET_SERVER_PUB_KEY = 0x14,
+  IMMOLATE = 0x15, // sets tamper=true in payload; server uses as signal
+  GET_STABLE_HASH = 0x16, // fingerprint.hashes.stable — tied into vmHash
 
   // ── Timezone cross-validation APIs ────────────────────────────
-  TZ_OFFSET: 0x17,   // Date.prototype.getTimezoneOffset() via pristine ref
-  TZ_COMPUTED: 0x18, // parse-based offset (independent of getTimezoneOffset)
-  TZ_LOCATION: 0x19, // Intl.DateTimeFormat resolved IANA timezone
-  TZ_ZONE: 0x1a,     // timezone name from Date.toString() parentheses
+  TZ_OFFSET = 0x17,   // Date.prototype.getTimezoneOffset() via pristine ref
+  TZ_COMPUTED = 0x18, // parse-based offset (independent of getTimezoneOffset)
+  TZ_LOCATION = 0x19, // Intl.DateTimeFormat resolved IANA timezone
+  TZ_ZONE = 0x1a,     // timezone name from Date.toString() parentheses
 
   // ── Worker scope cross-validation ─────────────────────────────
-  WS_COLLECT: 0x1b,  // async: spawns workers, returns full getBestWorkerScope() result
+  WS_COLLECT = 0x1b,  // async: spawns workers, returns full getBestWorkerScope() result
 
   // ── WebRTC integrity ───────────────────────────────────────────
-  WEBRTC_COLLECT: 0x1c, // async: runs getWebRTCData(), returns WebRTCFingerprint | null
+  WEBRTC_COLLECT = 0x1c, // async: runs getWebRTCData(), returns WebRTCFingerprint | null
 
   // ── CSS Media cross-validation ─────────────────────────────────
-  CSS_MEDIA_COLLECT: 0x1d, // sync: runs getCSSMedia(), returns flat normalized object | null
+  CSS_MEDIA_COLLECT = 0x1d, // sync: runs getCSSMedia(), returns flat normalized object | null
 
   // ── Session token for inner XOR scramble ──────────────────────
-  GET_SESSION_TOKEN: 0x1e, // returns ctx.sessionToken (sent as X-Argus-Session header)
+  GET_SESSION_TOKEN = 0x1e, // returns ctx.sessionToken (sent as X-Argus-Session header)
 
   // ── Async ECDH APIs (called via API_CALL_ASYNC) ────────────────
-  ECDH_GENERATE_KEY: 0x30,
-  ECDH_EXPORT_RAW: 0x31,
-  ECDH_DERIVE_ENCRYPT: 0x32,
+  ECDH_GENERATE_KEY = 0x30,
+  ECDH_EXPORT_RAW = 0x31,
+  ECDH_DERIVE_ENCRYPT = 0x32,
 
   // ── Sigint + submission fetch APIs (async) ─────────────────────
-  FETCH_TLS_FP: 0x40,
-  FETCH_TCP_PROBE: 0x41,
-  FETCH_H2_PROBE: 0x42,
-  POST_PAYLOAD: 0x43, // POST octet-stream → returns session_id
-} as const;
+  FETCH_TLS_FP = 0x40,
+  FETCH_TCP_PROBE = 0x41,
+  FETCH_H2_PROBE = 0x42,
+  POST_PAYLOAD = 0x43, // POST octet-stream → returns session_id
+}
 
 export interface ArgusVmContext {
   /** Full fingerprint data to include in the encrypted payload */
@@ -174,6 +182,14 @@ function base64ToUint8(b64: string): Uint8Array {
  */
 export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   const bridge = new ApiBridge();
+
+  // Warm the persistent ECDSA device-identity key pair. getCryptoId() opens
+  // IndexedDB, reads or generates a P-256 keypair, and memoises it. Starting
+  // it here means by the time POST_PAYLOAD fires (after sigint + ECDH work)
+  // the bundle is almost certainly resolved — no blocking on IDB at send time.
+  // Failures resolve to null so the POST handler can fall through to
+  // unsigned submission (server tolerates missing sig headers during rollout).
+  const cryptoIdPromise = getCryptoId().catch(() => null);
 
   // Capture pristine references at construction time
   const pristineToString = Function.prototype.toString;
@@ -446,25 +462,32 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
 
   // ── Crypto context APIs ───────────────────────────────────────────
 
-  // 0x13: get full payload JSON (fingerprint + sigint tokens + bot signals + vmHash)
-  // args[0] = vmHash string, args[1] = vmSignals string[], args[2] = tampered boolean,
-  //           args[3] = tlsResult string, args[4] = tcpToken string, args[5] = h2Token string
+  // 0x13: get full payload JSON (fingerprint + sigint tokens + device identity).
+  // args: (tlsResult, tcpToken, h2Token).  ASYNC — awaits persistent ECDSA
+  // keypair and signs the payload.
+  //
+  // The vmHash / vmSignals / tampered slots were deleted in harden-jsvm —
+  // server never consumed them. This replaces the old rolling-hash binding
+  // with a real cryptographic one: `payload.device_identity = { pubkey, sig }`
+  // where sig is ECDSA P-256 over SHA-256 of the payload JSON without the
+  // device_identity field. Pubkey is persistent across sessions (IndexedDB),
+  // giving the server a stable device anchor for visitor correlation.
+  //
+  // Sig generation is best-effort — IDB blocked / private mode / hostile
+  // iframe all fall through without device_identity. Server-side verification
+  // is additive; missing field is treated as "identity unavailable," not
+  // failure.
   bridge.register(BridgeApi.GET_PAYLOAD_JSON, {
-    call: (_thisArg, args) => {
+    call: async (_thisArg, args) => {
       let payload: Record<string, unknown>;
       try {
         payload = ctx.getPayload();
       } catch {
         return '';
       }
-      payload.vmHash = args[0] as string;
-      // args[1] (vmSignals) and args[2] (tampered) are kept in the VM ABI
-      // for backward compatibility but are always [] / false now — the
-      // vm:* signal generation was stripped (see scripts/vm-src/main.ts
-      // history note). Server-side analyzers do classification.
-      const tlsResult = args[3];
-      const tcpToken = args[4];
-      const h2Token = args[5];
+      const tlsResult = args[0];
+      const tcpToken = args[1];
+      const h2Token = args[2];
       if (tlsResult) {
         payload.sigintTls = tlsResult;
       }
@@ -474,6 +497,24 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       if (h2Token) {
         payload.sigintH2Token = h2Token;
       }
+
+      // Device identity: sign payload-without-identity with persistent ECDSA
+      // key, then attach identity. Server verifies by stripping identity and
+      // re-signing (same canonicalization). Failures fall through silently.
+      try {
+        const cryptoId = await cryptoIdPromise;
+        if (cryptoId) {
+          const unsignedJSON = JSON.stringify(payload);
+          const sig = await signWithCryptoId(unsignedJSON);
+          payload.device_identity = {
+            pubkey: cryptoId.publicKey,
+            sig,
+          };
+        }
+      } catch {
+        /* signing failed — proceed without identity */
+      }
+
       return JSON.stringify(payload);
     },
   });

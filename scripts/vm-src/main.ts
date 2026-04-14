@@ -7,19 +7,20 @@
 //
 // Flow:
 //   1. Async sigint probe fetches (TLS, TCP, H2 — tokens stored)
-//   2. Integrity hash (XOR-fold of stable_hash + 0 + h2 token)
-//   3. ECDH keygen → encrypt payload → POST → session_id
-//   4. Return { tampered:false, signals:[], hash, sessionId, vm:{} }
+//   2. ECDH keygen → encrypt payload → POST → session_id
+//   3. Return { sessionId, vm:{} }
 //
-// HISTORY (2026-04-13): The vm:* signal generation steps (formerly steps
-// 1-10.8) were stripped. Server-side analyzers (worker, timezone,
-// ip-consistency, ja4-ua) cover the cross-validation those signals were
-// trying to express, with TLS ground truth and ASN context the client
-// can't replicate. Bridge API IDs 0x01-0x12 are still registered but no
-// longer called from bytecode — kept for if/when we plumb the cross-realm
-// pristine captures into the device payload as raw witness data.
+// HISTORY (2026-04-13): The vm:* signal generation steps were stripped.
+// Server-side analyzers (worker, timezone, ip-consistency, ja4-ua) cover
+// the cross-validation those signals were trying to express, with TLS
+// ground truth and ASN context the client can't replicate. Bridge API
+// IDs 0x01-0x12 are still registered but no longer called from bytecode.
+//
+// HISTORY (harden-jsvm): The vm_hash / vm_signals / tampered wire fields
+// were deleted — server never read them. The 31-prime rolling hash was
+// not cryptographically binding and had no consumer. A real integrity
+// hash (crypto-id from ms-argus-web) will replace it in a followup.
 
-const signals = [];
 let tmp = 0;
 let i = 0;
 const vm = {};
@@ -31,29 +32,7 @@ let tlsResult = __api_call_async(0x40);
 let tcpToken = __api_call_async(0x41);
 let h2Token = __api_call_async(0x42);
 
-// ── 2. Integrity hash — stable fingerprint hash + signal count + h2 token ──
-// GET_STABLE_HASH (0x16) returns fingerprint.hashes.stable from the bridge context.
-// Tying the hash to the stable fingerprint hash means a forged payload with a
-// different stable hash will produce a mismatching vmHash — detectable server-side.
-// h2Token binds the hash to this specific probe session (verified after decryption).
-// signal count is always 0 now (vm:* signals removed) but the slot is preserved
-// to keep the hash format stable for any server-side validators that parsed it.
-let stableHash = __api_get(0x16);
-let h = '';
-h = h + stableHash;
-h = h + '|';
-h = h + String(signals.length);
-h = h + '|';
-h = h + h2Token;
-
-let hv = 0;
-i = 0;
-while (i < h.length) {
-  hv = hv * 31 + h.charCodeAt(i);
-  i = i + 1;
-}
-
-// ── 3. ECDH encrypt + POST ────────────────────────────────────────────
+// ── 2. ECDH encrypt + POST ────────────────────────────────────────────
 let serverPubKey = __api_get(0x14);
 let sessionId = '';
 let publicKeyB64 = '';
@@ -63,19 +42,10 @@ if (serverPubKey.length > 0) {
   tmp = __api_call_async(0x30);
   publicKeyB64 = __api_call_async(0x31, tmp.publicKey);
 
-  // Build payload JSON:
-  //   args: (vmHash, vmSignals, tampered, tlsResult, tcpToken, h2Token)
-  // vmSignals is always [] and tampered is always false — server-side
-  // analyzers do the actual classification work.
-  let payloadJSON = __api_call(
-    0x13,
-    String(hv),
-    signals,
-    false,
-    tlsResult,
-    tcpToken,
-    h2Token,
-  );
+  // Build payload JSON. Args: (tlsResult, tcpToken, h2Token). Async because
+  // the handler awaits the persistent ECDSA keypair (from IndexedDB) to
+  // sign the payload; see bridge.ts GET_PAYLOAD_JSON for details.
+  let payloadJSON = __api_call_async(0x13, tlsResult, tcpToken, h2Token);
 
   if (payloadJSON.length > 0) {
     // ── XOR scramble payload before ECDH encryption ──────────────
@@ -119,9 +89,6 @@ tcpToken = 0;
 h2Token = 0;
 
 const result = {
-  tampered: false,
-  signals: signals,
-  hash: String(hv),
   sessionId: sessionId,
   publicKeyB64: publicKeyB64,
   vm: vm,

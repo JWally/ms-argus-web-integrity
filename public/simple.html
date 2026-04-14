@@ -277,16 +277,6 @@
 
       sections.sort((a, b) => a.title.localeCompare(b.title));
 
-      // VM Signals — always last
-      const vmSigCount = vm?.vmSignals?.length ?? 0;
-      sections.push({
-        title: 'VM Signals',
-        level: vmSigCount > 0 ? 'alert' : 'ok',
-        badges: vmSigCount > 0 ? [badge(`${vmSigCount}`, 'red')] : [badge('clean', 'green')],
-        content: { signals: vm?.vmSignals ?? [] },
-        open: vmSigCount > 0,
-      });
-
       return sections;
     }
   </script>

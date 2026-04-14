@@ -2,13 +2,13 @@
  * Argus-Web VM orchestrator.
  *
  * Ported from ms-argus-bio/src/vm/tripwire.ts.
- * Loads XOR-scrambled bytecode, descrambles, runs async VM.
- * The VM does bot detection + sigint probes + ECDH encrypt + POST.
+ * Loads XOR-scrambled bytecode, descrambles, runs async VM. The VM runs
+ * sigint probes + ECDH encrypt + POST. Classification is server-side.
  *
  * Returns:
- *   - tampered: bot signals were detected
- *   - sessionId: returned by /v1/collect after successful POST
- *   - vmSignals: individual signal names (for diagnostics)
+ *   - sessionId: returned by /v1/integrity-collect after successful POST
+ *   - vm.timezone: timezone cross-validation data, for debug surfaces
+ *   - submissionError: populated when sessionId is empty, for diagnosis
  */
 
 import { decode } from './decoder';
@@ -142,10 +142,7 @@ export interface VmTimezone {
 }
 
 export interface ArgusVmResult {
-  tampered: boolean;
   sessionId: string;
-  vmSignals: string[];
-  vmHash: string;
   vm: {
     timezone?: VmTimezone;
   };
@@ -172,10 +169,7 @@ export async function runArgusVm(
   sigintConfig?: SigintConfig,
 ): Promise<ArgusVmResult> {
   const fallback: ArgusVmResult = {
-    tampered: false,
     sessionId: '',
-    vmSignals: [],
-    vmHash: '',
     vm: {},
   };
 
@@ -212,7 +206,6 @@ export async function runArgusVm(
     const binary = xorDescramble(scrambled, key);
     const mod = decode(binary.buffer as ArrayBuffer);
 
-    let immolateSignals: string[] | null = null;
     let submissionError: string | null = null;
     const ctx: ArgusVmContext = {
       getPayload: () => {
@@ -246,8 +239,11 @@ export async function runArgusVm(
       },
       getStableHash: () => '',
       getServerPubKey: () => handshake.serverPubKey,
-      onImmolate: (signals) => {
-        immolateSignals = signals;
+      onImmolate: () => {
+        /* no-op — tamper flagging was removed with the dead wire fields.
+         * Bridge API IMMOLATE (0x15) stays registered but is not called
+         * from bytecode. Reintroduce via the crypto-id replacement if a
+         * client-side tamper signal is wanted on the wire. */
       },
       sigintConfig,
       apiEndpoint: `${apiBase}/v1/integrity-collect`,
@@ -263,9 +259,6 @@ export async function runArgusVm(
 
     const vmResult = result.value as
       | {
-          tampered: boolean;
-          signals: string[];
-          hash: string;
           sessionId: string;
           publicKeyB64?: string;
           vm?: ArgusVmResult['vm'];
@@ -275,10 +268,7 @@ export async function runArgusVm(
     if (!vmResult) return fallback;
 
     return {
-      tampered: vmResult.tampered || immolateSignals !== null,
       sessionId: vmResult.sessionId ?? '',
-      vmSignals: immolateSignals ?? vmResult.signals,
-      vmHash: vmResult.hash,
       vm: vmResult.vm ?? {},
       ...(submissionError ? { submissionError } : {}),
     };
@@ -289,14 +279,21 @@ export async function runArgusVm(
 }
 
 /**
- * Run VM detection only — no sigint, no server POST.
- * Used to validate parity between the JS modules and the VM bytecode.
- * Safe to call in demo/dev environments without server setup.
+ * Run VM bytecode only — no sigint, no server POST.
+ *
+ * Historical purpose: validate parity between the JS detection modules
+ * and the VM bytecode's in-VM detection. The bytecode no longer runs
+ * detection (classification is server-side), so this is effectively a
+ * dormant utility — the returned `vm` slot is populated by the bridge's
+ * timezone cross-validation captures even without network access.
+ *
+ * Kept exported so simple.html (debug harness) and any future in-VM
+ * detection work have a side-effect-free way to exercise the bytecode.
  */
 export async function runVmDetection(
   fingerprint?: IntegrityResult,
-): Promise<{ vmSignals: string[]; vm: ArgusVmResult['vm'] }> {
-  const fallback = { vmSignals: [] as string[], vm: {} as ArgusVmResult['vm'] };
+): Promise<{ vm: ArgusVmResult['vm'] }> {
+  const fallback = { vm: {} as ArgusVmResult['vm'] };
 
   const mods = await loadBytecodeModules();
   if (!mods) return fallback;
@@ -319,14 +316,11 @@ export async function runVmDetection(
     const bridge = createArgusVmBridge(ctx);
     const result = await executeAsync(mod, bridge);
 
-    const vmResult = result.value as
-      | { signals?: string[]; vm?: ArgusVmResult['vm'] }
-      | undefined;
+    const vmResult = result.value as { vm?: ArgusVmResult['vm'] } | undefined;
 
     if (!vmResult) return fallback;
 
     return {
-      vmSignals: vmResult.signals ?? [],
       vm: vmResult.vm ?? {},
     };
   } catch {

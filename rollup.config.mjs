@@ -80,6 +80,12 @@ const configs = {
           'src/webrtc/**',
           'src/worker/**',
           'src/integrity.ts',
+          // VM bridge is registration code, not a dispatch loop — safe to
+          // obfuscate. Explicitly NOT including interpreter.ts / decoder.ts /
+          // opcodes.ts / format.ts / vm.ts / module.ts / bytecode-modules.ts:
+          // control-flow flattening the dispatch switch would tank perf,
+          // and bytecode-modules is an opaque XOR-scrambled blob already.
+          'src/vm/bridge.ts',
         ],
         compact: true,
         controlFlowFlattening: true,
@@ -193,6 +199,12 @@ const configs = {
           'src/webrtc/**',
           'src/worker/**',
           'src/integrity.ts',
+          // VM bridge is registration code, not a dispatch loop — safe to
+          // obfuscate. Explicitly NOT including interpreter.ts / decoder.ts /
+          // opcodes.ts / format.ts / vm.ts / module.ts / bytecode-modules.ts:
+          // control-flow flattening the dispatch switch would tank perf,
+          // and bytecode-modules is an opaque XOR-scrambled blob already.
+          'src/vm/bridge.ts',
         ],
         compact: true,
         controlFlowFlattening: true,
