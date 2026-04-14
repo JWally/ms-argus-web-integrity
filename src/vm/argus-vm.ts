@@ -2,13 +2,13 @@
  * Argus-Web VM orchestrator.
  *
  * Ported from ms-argus-bio/src/vm/tripwire.ts.
- * Loads XOR-scrambled bytecode, descrambles, runs async VM.
- * The VM does bot detection + sigint probes + ECDH encrypt + POST.
+ * Loads XOR-scrambled bytecode, descrambles, runs async VM. The VM runs
+ * sigint probes + ECDH encrypt + POST. Classification is server-side.
  *
  * Returns:
- *   - tampered: bot signals were detected
- *   - sessionId: returned by /v1/collect after successful POST
- *   - vmSignals: individual signal names (for diagnostics)
+ *   - sessionId: returned by /v1/integrity-collect after successful POST
+ *   - vm.timezone: timezone cross-validation data, for debug surfaces
+ *   - submissionError: populated when sessionId is empty, for diagnosis
  */
 
 import { decode } from './decoder';
@@ -134,21 +134,8 @@ export function prefetchArgusVm(sigintConfig?: SigintConfig): PrefetchResult {
   return slot;
 }
 
-export interface VmTimezone {
-  offset: number;
-  offsetComputed: number;
-  location: string;
-  zone: string;
-}
-
 export interface ArgusVmResult {
-  tampered: boolean;
   sessionId: string;
-  vmSignals: string[];
-  vmHash: string;
-  vm: {
-    timezone?: VmTimezone;
-  };
   /**
    * If the ECDH POST failed, this carries a short diagnostic string
    * (e.g. "http_402_Payment_Required", "fetch_threw: network error").
@@ -172,11 +159,7 @@ export async function runArgusVm(
   sigintConfig?: SigintConfig,
 ): Promise<ArgusVmResult> {
   const fallback: ArgusVmResult = {
-    tampered: false,
     sessionId: '',
-    vmSignals: [],
-    vmHash: '',
-    vm: {},
   };
 
   // Consume prefetch slot if available (started by prefetchArgusVm() before fingerprint collection),
@@ -212,7 +195,6 @@ export async function runArgusVm(
     const binary = xorDescramble(scrambled, key);
     const mod = decode(binary.buffer as ArrayBuffer);
 
-    let immolateSignals: string[] | null = null;
     let submissionError: string | null = null;
     const ctx: ArgusVmContext = {
       getPayload: () => {
@@ -244,11 +226,7 @@ export async function runArgusVm(
           meta: fingerprint.meta,
         } as unknown as Record<string, unknown>;
       },
-      getStableHash: () => '',
       getServerPubKey: () => handshake.serverPubKey,
-      onImmolate: (signals) => {
-        immolateSignals = signals;
-      },
       sigintConfig,
       apiEndpoint: `${apiBase}/v1/integrity-collect`,
       sessionToken: handshake.sessionToken,
@@ -262,24 +240,13 @@ export async function runArgusVm(
     const result = await executeAsync(mod, bridge);
 
     const vmResult = result.value as
-      | {
-          tampered: boolean;
-          signals: string[];
-          hash: string;
-          sessionId: string;
-          publicKeyB64?: string;
-          vm?: ArgusVmResult['vm'];
-        }
+      | { sessionId: string; publicKeyB64?: string }
       | undefined;
 
     if (!vmResult) return fallback;
 
     return {
-      tampered: vmResult.tampered || immolateSignals !== null,
       sessionId: vmResult.sessionId ?? '',
-      vmSignals: immolateSignals ?? vmResult.signals,
-      vmHash: vmResult.hash,
-      vm: vmResult.vm ?? {},
       ...(submissionError ? { submissionError } : {}),
     };
   } catch (err) {
@@ -289,17 +256,20 @@ export async function runArgusVm(
 }
 
 /**
- * Run VM detection only — no sigint, no server POST.
- * Used to validate parity between the JS modules and the VM bytecode.
- * Safe to call in demo/dev environments without server setup.
+ * Run VM bytecode with an empty server-pubkey context — exercises the
+ * interpreter without performing ECDH handshake, signing, or POST.
+ *
+ * The bytecode's main flow is gated on `serverPubKey.length > 0`; with an
+ * empty string it short-circuits past the crypto-id signing, encryption,
+ * and submission. Useful as a side-effect-free smoke test for the
+ * decoder + interpreter from debug harnesses (e.g. simple.html). Returns
+ * nothing meaningful — this exists for its side effect (running bytecode).
  */
 export async function runVmDetection(
   fingerprint?: IntegrityResult,
-): Promise<{ vmSignals: string[]; vm: ArgusVmResult['vm'] }> {
-  const fallback = { vmSignals: [] as string[], vm: {} as ArgusVmResult['vm'] };
-
+): Promise<void> {
   const mods = await loadBytecodeModules();
-  if (!mods) return fallback;
+  if (!mods) return;
 
   try {
     const scrambled = base64ToBytes(mods.bytecode);
@@ -309,27 +279,14 @@ export async function runVmDetection(
 
     const ctx: ArgusVmContext = {
       getPayload: () => ({}),
-      getStableHash: () => '',
       getServerPubKey: () => '', // no server key — skips ECDH + POST in bytecode
-      onImmolate: () => {},
       apiEndpoint: '',
       sessionToken: '',
     };
 
     const bridge = createArgusVmBridge(ctx);
-    const result = await executeAsync(mod, bridge);
-
-    const vmResult = result.value as
-      | { signals?: string[]; vm?: ArgusVmResult['vm'] }
-      | undefined;
-
-    if (!vmResult) return fallback;
-
-    return {
-      vmSignals: vmResult.signals ?? [],
-      vm: vmResult.vm ?? {},
-    };
+    await executeAsync(mod, bridge);
   } catch {
-    return fallback;
+    /* debug harness — swallow errors */
   }
 }

@@ -1,0 +1,198 @@
+/**
+ * Persistent ECDSA P-256 device identity (ported from ms-argus-web).
+ *
+ * Keys are stored in IndexedDB for persistence across sessions. The private
+ * key is marked non-extractable — it can sign inside the Web Crypto API
+ * but cannot be exported or exfiltrated.
+ *
+ * Use case here: replaces the old rolling-hash `vmHash` with real
+ * cryptographic binding. The `POST_PAYLOAD` bridge handler signs each
+ * encrypted envelope with this key and ships the signature + SPKI pubkey
+ * as request headers. Server can:
+ *   - verify signature (fast-reject bad actors without ECDH decrypt)
+ *   - track stable pubkey across sessions (device persistence signal)
+ *
+ * Differences from the ms-argus-web port:
+ *   - Uses a distinct DB name `argus-integrity-db` to avoid collision with
+ *     ms-argus-web's `argus-db` schema (which also has an evercookie store
+ *     we don't need here).
+ *   - No evercookie object store — only the `crypto-keys` store.
+ *
+ * If IndexedDB is unavailable (Firefox private mode, iframe blocked), we
+ * fall back to volatile in-memory keys so the caller always gets a bundle;
+ * persistence is best-effort.
+ */
+
+import { withTimeout } from './with-timeout';
+
+const DATABASE_NAME = 'argus-integrity-db';
+const DATABASE_VERSION = 1;
+const TABLE_NAME_KEYS = 'crypto-keys';
+const INDEX_VALUE_KEY = 'primary';
+
+/** Timeout for IndexedDB operations (ms). Prevents infinite hangs in Firefox/private mode. */
+const IDB_TIMEOUT_MS = 2000;
+
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++)
+    binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+async function exportPublicKeyB64(key: CryptoKey): Promise<string> {
+  return arrayBufferToBase64(await crypto.subtle.exportKey('spki', key));
+}
+
+export interface CryptoKeys {
+  id: string;
+  publicKey: string;
+  privateKey: CryptoKey;
+  date: string;
+}
+
+interface StoredKeys {
+  id: string;
+  publicKey: string;
+  privateKey: CryptoKey;
+  date: string;
+}
+
+let memoised: CryptoKeys | undefined;
+let inflight: Promise<CryptoKeys> | undefined;
+
+const openDb = (): Promise<IDBDatabase> =>
+  new Promise((res, rej) => {
+    const req = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(TABLE_NAME_KEYS)) {
+        db.createObjectStore(TABLE_NAME_KEYS, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+
+const readStoredKeys = async (
+  db: IDBDatabase,
+): Promise<StoredKeys | undefined> =>
+  new Promise((res, rej) => {
+    const tx = db.transaction(TABLE_NAME_KEYS, 'readonly');
+    const store = tx.objectStore(TABLE_NAME_KEYS);
+    const req = store.get(INDEX_VALUE_KEY);
+    req.onsuccess = () => res(req.result as StoredKeys | undefined);
+    req.onerror = () => rej(req.error);
+  });
+
+const writeStoredKeys = async (
+  db: IDBDatabase,
+  data: StoredKeys,
+): Promise<void> =>
+  new Promise((res, rej) => {
+    const tx = db.transaction(TABLE_NAME_KEYS, 'readwrite');
+    const store = tx.objectStore(TABLE_NAME_KEYS);
+    const req = store.put(data);
+    req.onsuccess = () => res();
+    req.onerror = () => rej(req.error);
+  });
+
+const setupCryptography = async (): Promise<CryptoKeys> => {
+  const db = await withTimeout(openDb(), IDB_TIMEOUT_MS, undefined).catch(
+    () => undefined,
+  );
+
+  try {
+    if (db) {
+      const stored = await readStoredKeys(db);
+      if (stored) {
+        return {
+          id: stored.id,
+          publicKey: stored.publicKey,
+          privateKey: stored.privateKey,
+          date: stored.date,
+        };
+      }
+    }
+
+    // Non-extractable — private key cannot be exported
+    const keyPair = await crypto.subtle.generateKey(
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['sign', 'verify'],
+    );
+
+    const pubB64 = await exportPublicKeyB64(keyPair.publicKey);
+
+    const stored: StoredKeys = {
+      id: INDEX_VALUE_KEY,
+      publicKey: pubB64,
+      privateKey: keyPair.privateKey,
+      date: new Date().toISOString(),
+    };
+
+    if (db) await writeStoredKeys(db, stored);
+
+    return {
+      id: stored.id,
+      publicKey: stored.publicKey,
+      privateKey: keyPair.privateKey,
+      date: stored.date,
+    };
+  } finally {
+    db?.close();
+  }
+};
+
+/**
+ * Get or create persistent ECDSA device-identity key pair. Memoised;
+ * subsequent calls resolve to the same bundle. Falls back to an in-memory
+ * keypair if IndexedDB is unavailable.
+ */
+export const getCryptoId = async (): Promise<CryptoKeys> => {
+  if (memoised) return memoised;
+  if (!inflight)
+    inflight = setupCryptography().catch(async () => {
+      // IDB totally unavailable — stay in-memory
+      const keyPair = await crypto.subtle.generateKey(
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        false,
+        ['sign', 'verify'],
+      );
+      return {
+        id: INDEX_VALUE_KEY,
+        publicKey: await exportPublicKeyB64(keyPair.publicKey),
+        privateKey: keyPair.privateKey,
+        date: new Date().toISOString(),
+      };
+    });
+
+  memoised = await inflight;
+  return memoised;
+};
+
+/**
+ * Sign data with the persistent private key. Returns Base64 signature.
+ */
+export const signWithCryptoId = async (
+  data: string | ArrayBuffer,
+): Promise<string> => {
+  const keys = await getCryptoId();
+  const dataBuffer =
+    typeof data === 'string' ? new TextEncoder().encode(data) : data;
+
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keys.privateKey,
+    dataBuffer,
+  );
+
+  return arrayBufferToBase64(signature);
+};
+
+/** Reset memoised keys (test-only; does NOT clear IDB). */
+export const resetCryptoIdMemo = (): void => {
+  memoised = undefined;
+  inflight = undefined;
+};

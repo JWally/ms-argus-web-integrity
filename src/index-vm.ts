@@ -7,4 +7,4 @@
  * feeding opaque bytecode.
  */
 export { runVmDetection } from './vm/argus-vm';
-export type { ArgusVmResult, VmTimezone } from './vm/argus-vm';
+export type { ArgusVmResult } from './vm/argus-vm';
