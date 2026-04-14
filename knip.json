@@ -2,11 +2,19 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
     "src/index.ts",
+    "src/index-iframe.ts",
     "src/index-vm.ts",
+    "src/loader/index.ts",
     "bin/*.ts",
-    "lib/**/*.ts"
+    "lib/**/*.ts",
+    "e2e/**/*.spec.ts"
   ],
-  "project": ["src/**/*.ts", "lib/**/*.ts", "bin/**/*.ts"],
+  "project": [
+    "src/**/*.ts",
+    "lib/**/*.ts",
+    "bin/**/*.ts",
+    "e2e/**/*.ts"
+  ],
   "ignore": [
     "**/*.test.ts",
     "scripts/**",
@@ -15,6 +23,12 @@
     "src/utils/html.ts",
     "src/worker/types.ts"
   ],
-  "ignoreDependencies": ["ts-node", "acorn", "@rollup/plugin-replace", "@rollup/plugin-terser", "@webgpu/types", "lefthook", "javascript-obfuscator"],
+  "ignoreDependencies": [
+    "ts-node",
+    "acorn",
+    "@webgpu/types",
+    "lefthook",
+    "patchright"
+  ],
   "exclude": ["types", "nsTypes", "exports", "duplicates"]
 }
