@@ -134,18 +134,8 @@ export function prefetchArgusVm(sigintConfig?: SigintConfig): PrefetchResult {
   return slot;
 }
 
-export interface VmTimezone {
-  offset: number;
-  offsetComputed: number;
-  location: string;
-  zone: string;
-}
-
 export interface ArgusVmResult {
   sessionId: string;
-  vm: {
-    timezone?: VmTimezone;
-  };
   /**
    * If the ECDH POST failed, this carries a short diagnostic string
    * (e.g. "http_402_Payment_Required", "fetch_threw: network error").
@@ -170,7 +160,6 @@ export async function runArgusVm(
 ): Promise<ArgusVmResult> {
   const fallback: ArgusVmResult = {
     sessionId: '',
-    vm: {},
   };
 
   // Consume prefetch slot if available (started by prefetchArgusVm() before fingerprint collection),
@@ -237,14 +226,7 @@ export async function runArgusVm(
           meta: fingerprint.meta,
         } as unknown as Record<string, unknown>;
       },
-      getStableHash: () => '',
       getServerPubKey: () => handshake.serverPubKey,
-      onImmolate: () => {
-        /* no-op — tamper flagging was removed with the dead wire fields.
-         * Bridge API IMMOLATE (0x15) stays registered but is not called
-         * from bytecode. Reintroduce via the crypto-id replacement if a
-         * client-side tamper signal is wanted on the wire. */
-      },
       sigintConfig,
       apiEndpoint: `${apiBase}/v1/integrity-collect`,
       sessionToken: handshake.sessionToken,
@@ -258,18 +240,13 @@ export async function runArgusVm(
     const result = await executeAsync(mod, bridge);
 
     const vmResult = result.value as
-      | {
-          sessionId: string;
-          publicKeyB64?: string;
-          vm?: ArgusVmResult['vm'];
-        }
+      | { sessionId: string; publicKeyB64?: string }
       | undefined;
 
     if (!vmResult) return fallback;
 
     return {
       sessionId: vmResult.sessionId ?? '',
-      vm: vmResult.vm ?? {},
       ...(submissionError ? { submissionError } : {}),
     };
   } catch (err) {
@@ -279,24 +256,20 @@ export async function runArgusVm(
 }
 
 /**
- * Run VM bytecode only — no sigint, no server POST.
+ * Run VM bytecode with an empty server-pubkey context — exercises the
+ * interpreter without performing ECDH handshake, signing, or POST.
  *
- * Historical purpose: validate parity between the JS detection modules
- * and the VM bytecode's in-VM detection. The bytecode no longer runs
- * detection (classification is server-side), so this is effectively a
- * dormant utility — the returned `vm` slot is populated by the bridge's
- * timezone cross-validation captures even without network access.
- *
- * Kept exported so simple.html (debug harness) and any future in-VM
- * detection work have a side-effect-free way to exercise the bytecode.
+ * The bytecode's main flow is gated on `serverPubKey.length > 0`; with an
+ * empty string it short-circuits past the crypto-id signing, encryption,
+ * and submission. Useful as a side-effect-free smoke test for the
+ * decoder + interpreter from debug harnesses (e.g. simple.html). Returns
+ * nothing meaningful — this exists for its side effect (running bytecode).
  */
 export async function runVmDetection(
   fingerprint?: IntegrityResult,
-): Promise<{ vm: ArgusVmResult['vm'] }> {
-  const fallback = { vm: {} as ArgusVmResult['vm'] };
-
+): Promise<void> {
   const mods = await loadBytecodeModules();
-  if (!mods) return fallback;
+  if (!mods) return;
 
   try {
     const scrambled = base64ToBytes(mods.bytecode);
@@ -306,24 +279,14 @@ export async function runVmDetection(
 
     const ctx: ArgusVmContext = {
       getPayload: () => ({}),
-      getStableHash: () => '',
       getServerPubKey: () => '', // no server key — skips ECDH + POST in bytecode
-      onImmolate: () => {},
       apiEndpoint: '',
       sessionToken: '',
     };
 
     const bridge = createArgusVmBridge(ctx);
-    const result = await executeAsync(mod, bridge);
-
-    const vmResult = result.value as { vm?: ArgusVmResult['vm'] } | undefined;
-
-    if (!vmResult) return fallback;
-
-    return {
-      vm: vmResult.vm ?? {},
-    };
+    await executeAsync(mod, bridge);
   } catch {
-    return fallback;
+    /* debug harness — swallow errors */
   }
 }

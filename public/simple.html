@@ -113,11 +113,13 @@
 
       try {
         const result = await collectIntegrity();
-        const vmResult = await runVmDetection(result);
+        // Fire bytecode for its side effect (smoke-test the interpreter).
+        // Runs with an empty server pubkey, so it no-ops past the submit path.
+        await runVmDetection(result);
         durationEl.textContent = `${result.meta.durationMs}ms`;
         controls.style.display = 'flex';
 
-        for (const s of buildSections(result, vmResult)) {
+        for (const s of buildSections(result)) {
           accordion.appendChild(makeItem(s));
         }
       } catch (err) {
@@ -163,7 +165,7 @@
 
     function badge(text, color) { return { text, color }; }
 
-    function buildSections(r, vm) {
+    function buildSections(r) {
       const sections = [];
 
       // Engine
