@@ -7,19 +7,22 @@
 //
 // Flow:
 //   1. Async sigint probe fetches (TLS, TCP, H2 — tokens stored)
-//   2. ECDH keygen → encrypt payload → POST → session_id
-//   3. Return { sessionId, vm:{} }
+//   2. ECDH keygen → assemble device → encrypt payload → POST → session_id
+//   3. Return { sessionId }
 //
 // HISTORY (2026-04-13): The vm:* signal generation steps were stripped.
 // Server-side analyzers (worker, timezone, ip-consistency, ja4-ua) cover
-// the cross-validation those signals were trying to express, with TLS
-// ground truth and ASN context the client can't replicate. Bridge API
-// IDs 0x01-0x12 are still registered but no longer called from bytecode.
+// the cross-validation those signals were trying to express.
 //
 // HISTORY (harden-jsvm): The vm_hash / vm_signals / tampered wire fields
-// were deleted — server never read them. The 31-prime rolling hash was
-// not cryptographically binding and had no consumer. A real integrity
-// hash (crypto-id from ms-argus-web) will replace it in a followup.
+// were deleted — server never read them. Replaced by a real cryptographic
+// integrity binding via persistent ECDSA crypto-id (device_identity).
+//
+// HISTORY (vm-pristine-vault): The device.* sub-object is now composed
+// here in bytecode from 19 slice gets (0x50-0x62). Previously the bridge
+// built the entire payload from a single ctx.getPayload thunk — one hook
+// leaked everything. Now bytecode assembles device itself; bridge only
+// provides individual unlabeled slices via ApiBridge.prototype.get.
 
 let tmp = 0;
 let i = 0;
@@ -42,10 +45,37 @@ if (serverPubKey.length > 0) {
   tmp = __api_call_async(0x30);
   publicKeyB64 = __api_call_async(0x31, tmp.publicKey);
 
-  // Build payload JSON. Args: (tlsResult, tcpToken, h2Token). Async because
-  // the handler awaits the persistent ECDSA keypair (from IndexedDB) to
-  // sign the payload; see bridge.ts GET_PAYLOAD_JSON for details.
-  let payloadJSON = __api_call_async(0x13, tlsResult, tcpToken, h2Token);
+  // Compose device object from individual slices (vm-pristine-vault).
+  // Order matches IntegrityResult and the prior ctx.getPayload composition,
+  // which keeps the assembled JSON byte-stable across the refactor — important
+  // for any server-side device_identity verifier (sig is over JSON).
+  let device = {
+    css: __api_get(0x50),
+    engine: __api_get(0x51),
+    math: __api_get(0x52),
+    headless: __api_get(0x53),
+    lies: __api_get(0x54),
+    trash: __api_get(0x55),
+    shielding: __api_get(0x56),
+    incognito: __api_get(0x57),
+    intl: __api_get(0x58),
+    navigator: __api_get(0x59),
+    screen: __api_get(0x5a),
+    status: __api_get(0x5b),
+    timezone: __api_get(0x5c),
+    timing: __api_get(0x5d),
+    cssMedia: __api_get(0x5e),
+    webrtc: __api_get(0x5f),
+    windowPrefixes: __api_get(0x60),
+    workerScope: __api_get(0x61),
+    errors: __api_get(0x62),
+  };
+
+  // Build payload JSON. Args: (device, tlsResult, tcpToken, h2Token).
+  // Async because the handler awaits the persistent ECDSA keypair (from
+  // IndexedDB) to sign the payload; see bridge.ts GET_PAYLOAD_JSON.
+  let payloadJSON = __api_call_async(0x13, device, tlsResult, tcpToken, h2Token);
+  device = 0;
 
   if (payloadJSON.length > 0) {
     // ── XOR scramble payload before ECDH encryption ──────────────

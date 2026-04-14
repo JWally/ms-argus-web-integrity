@@ -197,35 +197,10 @@ export async function runArgusVm(
 
     let submissionError: string | null = null;
     const ctx: ArgusVmContext = {
-      getPayload: () => {
-        return {
-          identifiers: {
-            session_id: crypto.randomUUID(),
-          },
-          device: {
-            css: fingerprint.css,
-            engine: fingerprint.engine,
-            math: fingerprint.math,
-            headless: fingerprint.headless,
-            lies: fingerprint.lies,
-            trash: fingerprint.trash,
-            shielding: fingerprint.shielding,
-            incognito: fingerprint.incognito,
-            intl: fingerprint.intl,
-            navigator: fingerprint.navigator,
-            screen: fingerprint.screen,
-            status: fingerprint.status,
-            timezone: fingerprint.timezone,
-            timing: fingerprint.timing,
-            cssMedia: fingerprint.cssMedia,
-            webrtc: fingerprint.webrtc,
-            windowPrefixes: fingerprint.windowPrefixes,
-            workerScope: fingerprint.workerScope,
-            errors: fingerprint.errors,
-          },
-          meta: fingerprint.meta,
-        } as unknown as Record<string, unknown>;
-      },
+      // Slice handlers in bridge.ts read from this; bytecode composes the
+      // device object via 0x50-0x62 gets. Identifiers + meta are added by
+      // GET_PAYLOAD_JSON which receives the assembled device as its first arg.
+      fingerprint,
       getServerPubKey: () => handshake.serverPubKey,
       sigintConfig,
       apiEndpoint: `${apiBase}/v1/integrity-collect`,
@@ -264,9 +239,12 @@ export async function runArgusVm(
  * and submission. Useful as a side-effect-free smoke test for the
  * decoder + interpreter from debug harnesses (e.g. simple.html). Returns
  * nothing meaningful — this exists for its side effect (running bytecode).
+ *
+ * `fingerprint` is required: bytecode unconditionally builds the device
+ * object via slice gets, which would crash without it.
  */
 export async function runVmDetection(
-  fingerprint?: IntegrityResult,
+  fingerprint: IntegrityResult,
 ): Promise<void> {
   const mods = await loadBytecodeModules();
   if (!mods) return;
@@ -278,7 +256,7 @@ export async function runVmDetection(
     const mod = decode(binary.buffer as ArrayBuffer);
 
     const ctx: ArgusVmContext = {
-      getPayload: () => ({}),
+      fingerprint,
       getServerPubKey: () => '', // no server key — skips ECDH + POST in bytecode
       apiEndpoint: '',
       sessionToken: '',
