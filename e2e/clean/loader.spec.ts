@@ -86,6 +86,15 @@ test.describe('loader end-to-end', () => {
     expect(record!.device, 'device payload should be present').toBeTruthy();
     // Server ran its analyzers
     expect(record!.analysis, 'analysis block should be present').toBeTruthy();
+
+    // 7. Device-identity verification outcome is recorded. Bytecode signed
+    //    xor(h2Token, KEY) with the persistent ECDSA pubkey; server verified.
+    const ident = (record as Record<string, unknown>).identification as
+      | { pubkey?: string; verified?: boolean; reason?: string | null }
+      | undefined;
+    expect(ident, 'identification section should be present').toBeTruthy();
+    expect(ident!.verified, `identity verify failed: ${ident!.reason ?? 'n/a'}`).toBe(true);
+    expect(ident!.pubkey).toMatch(/^[A-Za-z0-9+/=]{80,}$/);
   });
 
   test('superseded run rejects first, resolves second', async ({ page }) => {

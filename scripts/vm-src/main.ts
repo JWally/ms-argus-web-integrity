@@ -35,6 +35,31 @@ let tlsResult = __api_call_async(0x40);
 let tcpToken = __api_call_async(0x41);
 let h2Token = __api_call_async(0x42);
 
+// ── 1b. Device identity: sign XOR'd h2 token ──────────────────────────
+// Persistent ECDSA pubkey survives the session (IndexedDB, non-extractable).
+// Server verifies sig over xor(h2Token, KEY) — proves we hold the private
+// key AND made a real h2-probe call within its 90s TTL.
+//
+// The XOR layer is cheap obfuscation: a reverser hooking crypto.subtle.sign
+// sees garbage bytes rather than an obviously-HMAC'd token format. The key
+// is code-level, not a secret — but they'd have to reverse this bytecode
+// to discover it. Must match DEVICE_IDENTITY_XOR_KEY in ms-argus-api
+// (src/helpers/device-identity.ts) or server sigs won't verify.
+let devicePubkey = __api_call_async(0x1f);
+let deviceSig = '';
+if (h2Token.length > 0 && devicePubkey.length > 0) {
+  let xorKey = [0x5a, 0x3f, 0x91, 0x2c, 0xb7, 0x44, 0x68, 0xe1, 0xd0, 0x0a, 0x7d, 0x59, 0x13, 0xee, 0x82, 0xbc];
+  let xored = '';
+  i = 0;
+  while (i < h2Token.length) {
+    xored = xored + String.fromCharCode(h2Token.charCodeAt(i) ^ xorKey[i % 16]);
+    i = i + 1;
+  }
+  deviceSig = __api_call_async(0x33, xored);
+  xored = 0;
+  xorKey = 0;
+}
+
 // ── 2. ECDH encrypt + POST ────────────────────────────────────────────
 let serverPubKey = __api_get(0x14);
 let sessionId = '';
@@ -71,11 +96,13 @@ if (serverPubKey.length > 0) {
     errors: __api_get(0x62),
   };
 
-  // Build payload JSON. Args: (device, tlsResult, tcpToken, h2Token).
-  // Async because the handler awaits the persistent ECDSA keypair (from
-  // IndexedDB) to sign the payload; see bridge.ts GET_PAYLOAD_JSON.
-  let payloadJSON = __api_call_async(0x13, device, tlsResult, tcpToken, h2Token);
+  // Build payload JSON. Args: (device, tlsResult, tcpToken, h2Token, pubkey, sig).
+  // The pubkey+sig are attached as payload.device_identity when non-empty.
+  // Bytecode owns that composition; bridge just serializes.
+  let payloadJSON = __api_call_async(0x13, device, tlsResult, tcpToken, h2Token, devicePubkey, deviceSig);
   device = 0;
+  devicePubkey = 0;
+  deviceSig = 0;
 
   if (payloadJSON.length > 0) {
     // ── XOR scramble payload before ECDH encryption ──────────────
