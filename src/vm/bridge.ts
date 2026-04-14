@@ -20,6 +20,7 @@ import {
   fetchH2Probe,
 } from '../utils/sigint';
 import { getCryptoId, signWithCryptoId } from '../utils/get-crypto-id';
+import type { IntegrityResult } from '../integrity';
 
 export interface ApiHandler {
   get?: () => unknown;
@@ -68,7 +69,7 @@ export class ApiBridge {
  */
 export const enum BridgeApi {
   // ── Crypto context APIs ────────────────────────────────────────
-  GET_PAYLOAD_JSON = 0x13, // fingerprint + sigint tokens + device identity
+  GET_PAYLOAD_JSON = 0x13, // assembles final JSON; receives `device` from bytecode
   GET_SERVER_PUB_KEY = 0x14,
 
   // ── Session token for inner XOR scramble ──────────────────────
@@ -84,11 +85,42 @@ export const enum BridgeApi {
   FETCH_TCP_PROBE = 0x41,
   FETCH_H2_PROBE = 0x42,
   POST_PAYLOAD = 0x43, // POST octet-stream → returns session_id
+
+  // ── Fingerprint slice APIs (vm-pristine-vault) ─────────────────
+  // Each slice returns one device.* sub-object pre-collected by
+  // collectIntegrity(). Bytecode composes the device object itself,
+  // so an attacker hooking ApiBridge.prototype.get sees individual
+  // unlabeled slices instead of the entire payload from one ctx.getPayload
+  // call. Order here matches the IntegrityResult interface in src/integrity.ts.
+  SLICE_CSS = 0x50,
+  SLICE_ENGINE = 0x51,
+  SLICE_MATH = 0x52,
+  SLICE_HEADLESS = 0x53,
+  SLICE_LIES = 0x54,
+  SLICE_TRASH = 0x55,
+  SLICE_SHIELDING = 0x56,
+  SLICE_INCOGNITO = 0x57,
+  SLICE_INTL = 0x58,
+  SLICE_NAVIGATOR = 0x59,
+  SLICE_SCREEN = 0x5a,
+  SLICE_STATUS = 0x5b,
+  SLICE_TIMEZONE = 0x5c,
+  SLICE_TIMING = 0x5d,
+  SLICE_CSSMEDIA = 0x5e,
+  SLICE_WEBRTC = 0x5f,
+  SLICE_WINDOW_PREFIXES = 0x60,
+  SLICE_WORKER_SCOPE = 0x61,
+  SLICE_ERRORS = 0x62,
 }
 
 export interface ArgusVmContext {
-  /** Full fingerprint data to include in the encrypted payload */
-  getPayload: () => Record<string, unknown>;
+  /**
+   * Pre-collected fingerprint. Slice handlers (0x50-0x62) return individual
+   * sub-objects from this; meta is read by GET_PAYLOAD_JSON. No `getPayload`
+   * thunk — the bytecode composes the device object itself, eliminating the
+   * "one hook leaks everything" attack on a single payload-builder closure.
+   */
+  fingerprint: IntegrityResult;
   /** Raw P-256 server public key (88-char base64) — from h2-probe */
   getServerPubKey: () => string;
   /** Sigint probe endpoints (optional — probes skipped if absent) */
@@ -183,32 +215,34 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
 
   // ── Crypto context APIs ───────────────────────────────────────────
 
-  // 0x13: get full payload JSON (fingerprint + sigint tokens + device identity).
-  // args: (tlsResult, tcpToken, h2Token).  ASYNC — awaits persistent ECDSA
-  // keypair and signs the payload.
+  // 0x13: assemble final payload JSON (sigint tokens + identity + bytecode-built device).
+  // args: (device, tlsResult, tcpToken, h2Token).  ASYNC — awaits persistent
+  // ECDSA keypair and signs the payload.
   //
-  // The vmHash / vmSignals / tampered slots were deleted in harden-jsvm —
-  // server never consumed them. This replaces the old rolling-hash binding
-  // with a real cryptographic one: `payload.device_identity = { pubkey, sig }`
-  // where sig is ECDSA P-256 over SHA-256 of the payload JSON without the
-  // device_identity field. Pubkey is persistent across sessions (IndexedDB),
-  // giving the server a stable device anchor for visitor correlation.
+  // The `device` object is composed in bytecode by chaining 0x50-0x62 slice
+  // gets (vm-pristine-vault). This bridge no longer reaches into the
+  // fingerprint to build device.* itself — only meta is read here, since
+  // bytecode has no use for it. Closing the "one hook on getPayload leaks
+  // everything" attack: a reverser hooking ApiBridge.prototype.get sees
+  // individual unlabeled slices arriving over time, not the entire payload
+  // from one call site.
   //
-  // Sig generation is best-effort — IDB blocked / private mode / hostile
-  // iframe all fall through without device_identity. Server-side verification
-  // is additive; missing field is treated as "identity unavailable," not
-  // failure.
+  // device_identity (ECDSA-signed) attached as a final step, computed over
+  // the JSON before identity is added. Server verifies by stripping identity
+  // and re-signing (same canonicalization). Failures fall through silently.
   bridge.register(BridgeApi.GET_PAYLOAD_JSON, {
     call: async (_thisArg, args) => {
-      let payload: Record<string, unknown>;
-      try {
-        payload = ctx.getPayload();
-      } catch {
-        return '';
-      }
-      const tlsResult = args[0];
-      const tcpToken = args[1];
-      const h2Token = args[2];
+      const device = args[0] as Record<string, unknown>;
+      const tlsResult = args[1];
+      const tcpToken = args[2];
+      const h2Token = args[3];
+
+      const payload: Record<string, unknown> = {
+        identifiers: { session_id: crypto.randomUUID() },
+        device,
+        meta: ctx.fingerprint.meta,
+      };
+
       if (tlsResult) {
         payload.sigintTls = tlsResult;
       }
@@ -239,6 +273,33 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       return JSON.stringify(payload);
     },
   });
+
+  // ── Fingerprint slice APIs (0x50-0x62) ────────────────────────────
+  // Each slice returns one device.* sub-object pre-collected in
+  // collectIntegrity(). Bytecode composes the device object from these.
+  // Order matches IntegrityResult in src/integrity.ts and the prior
+  // ctx.getPayload composition order — important for keeping the
+  // assembled JSON byte-stable across the refactor.
+  const fp = ctx.fingerprint;
+  bridge.register(BridgeApi.SLICE_CSS,             { get: () => fp.css });
+  bridge.register(BridgeApi.SLICE_ENGINE,          { get: () => fp.engine });
+  bridge.register(BridgeApi.SLICE_MATH,            { get: () => fp.math });
+  bridge.register(BridgeApi.SLICE_HEADLESS,        { get: () => fp.headless });
+  bridge.register(BridgeApi.SLICE_LIES,            { get: () => fp.lies });
+  bridge.register(BridgeApi.SLICE_TRASH,           { get: () => fp.trash });
+  bridge.register(BridgeApi.SLICE_SHIELDING,       { get: () => fp.shielding });
+  bridge.register(BridgeApi.SLICE_INCOGNITO,       { get: () => fp.incognito });
+  bridge.register(BridgeApi.SLICE_INTL,            { get: () => fp.intl });
+  bridge.register(BridgeApi.SLICE_NAVIGATOR,       { get: () => fp.navigator });
+  bridge.register(BridgeApi.SLICE_SCREEN,          { get: () => fp.screen });
+  bridge.register(BridgeApi.SLICE_STATUS,          { get: () => fp.status });
+  bridge.register(BridgeApi.SLICE_TIMEZONE,        { get: () => fp.timezone });
+  bridge.register(BridgeApi.SLICE_TIMING,          { get: () => fp.timing });
+  bridge.register(BridgeApi.SLICE_CSSMEDIA,        { get: () => fp.cssMedia });
+  bridge.register(BridgeApi.SLICE_WEBRTC,          { get: () => fp.webrtc });
+  bridge.register(BridgeApi.SLICE_WINDOW_PREFIXES, { get: () => fp.windowPrefixes });
+  bridge.register(BridgeApi.SLICE_WORKER_SCOPE,    { get: () => fp.workerScope });
+  bridge.register(BridgeApi.SLICE_ERRORS,          { get: () => fp.errors });
 
   // 0x14: get server public key
   bridge.register(BridgeApi.GET_SERVER_PUB_KEY, {
