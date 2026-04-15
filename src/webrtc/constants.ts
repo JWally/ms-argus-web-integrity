@@ -3,8 +3,7 @@
  */
 
 export const DEFAULT_STUN_SERVERS = [
-  'stun:stun4.l.google.com:19302',
-  'stun:stun3.l.google.com:19302',
+  'stun:dev-jw-stun.argus.pw:3478',
 ];
 
 let customStunServers: string[] | null = null;

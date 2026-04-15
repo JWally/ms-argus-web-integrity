@@ -36,6 +36,23 @@ export interface ICECandidateSummary {
    * Prefers public IPv4 > private IPv4 > IPv6.
    */
   primaryIP?: string;
+  /**
+   * Server-reflexive candidates returned by the configured STUN server.
+   * With the argus sigint STUN, `address` is an IPv6-shaped encrypted blob
+   * encoding the client's real IPv4 + timestamp + MAC; the server decrypts
+   * using the shared AES key. Multiple entries = multiple egress interfaces
+   * (dual-stack / VPN / multi-NIC).
+   */
+  sigintCandidates: SigintCandidate[];
+}
+
+/**
+ * A server-reflexive (srflx) ICE candidate produced by our STUN server.
+ * Opaque to the client; the server decrypts to recover the real client IP.
+ */
+export interface SigintCandidate {
+  address: string;
+  port: number;
 }
 
 /**

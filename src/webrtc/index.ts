@@ -14,7 +14,12 @@
  */
 
 import { getRtcConfig, KNOWN_FOUNDATIONS, ICE_GATHER_TIMEOUT } from './constants';
-import type { WebRTCFingerprint, ParsedICECandidate, ICECandidateSummary } from './types';
+import type {
+  WebRTCFingerprint,
+  ParsedICECandidate,
+  ICECandidateSummary,
+  SigintCandidate,
+} from './types';
 
 const PRIVATE_IP_PATTERN = /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/;
 const IPV6_PATTERN = /^[a-f0-9:]+$/i;
@@ -52,6 +57,8 @@ function summarizeICECandidates(candidates: ParsedICECandidate[]): ICECandidateS
   const publicIPs: string[] = [];
   const privateIPs: string[] = [];
   const ipv6Addresses: string[] = [];
+  const sigintCandidates: SigintCandidate[] = [];
+  const seenSigint = new Set<string>();
   let hasMDNS = false;
 
   for (const c of candidates) {
@@ -65,6 +72,13 @@ function summarizeICECandidates(candidates: ParsedICECandidate[]): ICECandidateS
     } else if (c.category === 'mdns') {
       hasMDNS = true;
     }
+    if (c.type === 'srflx') {
+      const key = `${c.address}:${c.port}`;
+      if (!seenSigint.has(key)) {
+        seenSigint.add(key);
+        sigintCandidates.push({ address: c.address, port: c.port });
+      }
+    }
   }
 
   const primaryIP = publicIPs[0] || privateIPs[0] || ipv6Addresses[0];
@@ -77,6 +91,7 @@ function summarizeICECandidates(candidates: ParsedICECandidate[]): ICECandidateS
     privateIPs,
     ipv6Addresses,
     primaryIP,
+    sigintCandidates,
   };
 }
 

@@ -10,12 +10,12 @@ import {
 
 describe('webrtc constants', () => {
   describe('DEFAULT_STUN_SERVERS', () => {
-    it('contains Google STUN servers', () => {
+    it('points at the argus sigint STUN server', () => {
       expect(DEFAULT_STUN_SERVERS).toBeInstanceOf(Array);
       expect(DEFAULT_STUN_SERVERS.length).toBeGreaterThan(0);
       DEFAULT_STUN_SERVERS.forEach((server) => {
         expect(server).toMatch(/^stun:/);
-        expect(server).toContain('google.com');
+        expect(server).toContain('argus.pw');
       });
     });
   });
