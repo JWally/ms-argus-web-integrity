@@ -19,7 +19,7 @@ import {
   fetchTcpProbe,
   fetchH2Probe,
 } from '../utils/sigint';
-import { getCryptoId, signWithCryptoId } from '../utils/get-crypto-id';
+import { getCryptoId } from '../utils/get-crypto-id';
 import type { IntegrityResult } from '../integrity';
 
 export interface ApiHandler {
@@ -74,6 +74,14 @@ export const enum BridgeApi {
 
   // ── Session token for inner XOR scramble ──────────────────────
   GET_SESSION_TOKEN = 0x1e, // returns ctx.sessionToken (sent as X-Argus-Session header)
+
+  // ── Device identity (persistent ECDSA keypair) ────────────────
+  // 0x1f returns the SPKI-b64 pubkey (async — warmed at bridge setup,
+  // promise resolves quickly after IDB open). 0x33 signs arbitrary bytes
+  // with the cached private key and returns a base64 sig. Both return ""
+  // on any failure so bytecode can detect-and-skip without branching.
+  GET_CRYPTO_PUBKEY = 0x1f,
+  SIGN_BYTES = 0x33,
 
   // ── Async ECDH APIs (called via API_CALL_ASYNC) ────────────────
   ECDH_GENERATE_KEY = 0x30,
@@ -227,15 +235,19 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // individual unlabeled slices arriving over time, not the entire payload
   // from one call site.
   //
-  // device_identity (ECDSA-signed) attached as a final step, computed over
-  // the JSON before identity is added. Server verifies by stripping identity
-  // and re-signing (same canonicalization). Failures fall through silently.
+  // Bytecode assembles device_identity itself (via 0x1f pubkey getter + 0x33
+  // signer over XOR'd h2Token) and passes the finished pubkey/sig strings in.
+  // Keeping sig assembly out of the bridge means a reverser hooking
+  // ApiBridge.prototype.call sees only opaque strings arriving here — they'd
+  // have to separately hook 0x33 AND reverse the XOR logic in bytecode.
   bridge.register(BridgeApi.GET_PAYLOAD_JSON, {
     call: async (_thisArg, args) => {
       const device = args[0] as Record<string, unknown>;
       const tlsResult = args[1];
       const tcpToken = args[2];
       const h2Token = args[3];
+      const pubkey = args[4];
+      const sig = args[5];
 
       const payload: Record<string, unknown> = {
         identifiers: { session_id: crypto.randomUUID() },
@@ -252,22 +264,13 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       if (h2Token) {
         payload.sigintH2Token = h2Token;
       }
-
-      // Device identity: sign payload-without-identity with persistent ECDSA
-      // key, then attach identity. Server verifies by stripping identity and
-      // re-signing (same canonicalization). Failures fall through silently.
-      try {
-        const cryptoId = await cryptoIdPromise;
-        if (cryptoId) {
-          const unsignedJSON = JSON.stringify(payload);
-          const sig = await signWithCryptoId(unsignedJSON);
-          payload.device_identity = {
-            pubkey: cryptoId.publicKey,
-            sig,
-          };
-        }
-      } catch {
-        /* signing failed — proceed without identity */
+      if (
+        typeof pubkey === 'string' &&
+        pubkey.length > 0 &&
+        typeof sig === 'string' &&
+        sig.length > 0
+      ) {
+        payload.device_identity = { pubkey, sig };
       }
 
       return JSON.stringify(payload);
@@ -304,6 +307,50 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // 0x14: get server public key
   bridge.register(BridgeApi.GET_SERVER_PUB_KEY, {
     get: () => ctx.getServerPubKey(),
+  });
+
+  // ── Device-identity APIs (persistent ECDSA keypair) ──────────────
+  // 0x1f returns the SPKI-b64 pubkey. Async because the keypair bundle is
+  // fronted by a Promise that opens IndexedDB; warmed at bridge setup so
+  // resolution is usually free by the time bytecode asks. Returns "" on any
+  // failure so bytecode can gracefully skip attaching device_identity.
+  bridge.register(BridgeApi.GET_CRYPTO_PUBKEY, {
+    call: async () => {
+      try {
+        const cryptoId = await cryptoIdPromise;
+        return cryptoId?.publicKey ?? '';
+      } catch {
+        return '';
+      }
+    },
+  });
+
+  // 0x33 signs arbitrary bytes with the cached non-extractable private key.
+  // Input is a "raw-byte string" where each char code is one byte (0-255) —
+  // this matches the rest of the bytecode's string-as-byte pattern so the VM
+  // can pass XOR'd output directly without base64 round-tripping. Returns
+  // base64 signature, or "" on failure.
+  bridge.register(BridgeApi.SIGN_BYTES, {
+    call: async (_thisArg, args) => {
+      try {
+        const cryptoId = await cryptoIdPromise;
+        if (!cryptoId) return '';
+        const raw = args[0];
+        if (typeof raw !== 'string' || raw.length === 0) return '';
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) {
+          bytes[i] = raw.charCodeAt(i) & 0xff;
+        }
+        const sigBuf = await crypto.subtle.sign(
+          { name: 'ECDSA', hash: 'SHA-256' },
+          cryptoId.privateKey,
+          bytes,
+        );
+        return uint8ToBase64(new Uint8Array(sigBuf));
+      } catch {
+        return '';
+      }
+    },
   });
 
   // ── Async ECDH APIs ───────────────────────────────────────────────

@@ -98,6 +98,47 @@ const writeStoredKeys = async (
     req.onerror = () => rej(req.error);
   });
 
+/**
+ * Decoys written alongside the real key on first setup. Each carries
+ * plausible crypto-adjacent shape (random bytes + createdAt) so a reverser
+ * enumerating IndexedDB can't immediately pick the real entry. Failures are
+ * swallowed — decoys are ornamental.
+ */
+const DECOY_IDS = ['private-key-nonce', 'session-salt', 'device-entropy'];
+
+function randomBytesHex(n: number): string {
+  const arr = new Uint8Array(n);
+  crypto.getRandomValues(arr);
+  let out = '';
+  for (let i = 0; i < arr.length; i++) {
+    out += arr[i].toString(16).padStart(2, '0');
+  }
+  return out;
+}
+
+async function writeDecoys(db: IDBDatabase): Promise<void> {
+  await Promise.all(
+    DECOY_IDS.map(
+      (id) =>
+        new Promise<void>((res) => {
+          try {
+            const tx = db.transaction(TABLE_NAME_KEYS, 'readwrite');
+            const store = tx.objectStore(TABLE_NAME_KEYS);
+            const req = store.put({
+              id,
+              material: randomBytesHex(32),
+              createdAt: Date.now(),
+            });
+            req.onsuccess = () => res();
+            req.onerror = () => res(); // best-effort
+          } catch {
+            res();
+          }
+        }),
+    ),
+  );
+}
+
 const setupCryptography = async (): Promise<CryptoKeys> => {
   const db = await withTimeout(openDb(), IDB_TIMEOUT_MS, undefined).catch(
     () => undefined,
@@ -132,7 +173,12 @@ const setupCryptography = async (): Promise<CryptoKeys> => {
       date: new Date().toISOString(),
     };
 
-    if (db) await writeStoredKeys(db, stored);
+    if (db) {
+      await writeStoredKeys(db, stored);
+      // Write decoys concurrently with the real key. If they fail, shrug —
+      // the real key is what matters.
+      await writeDecoys(db);
+    }
 
     return {
       id: stored.id,
