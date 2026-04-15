@@ -95,6 +95,73 @@ test.describe('loader end-to-end', () => {
     expect(ident, 'identification section should be present').toBeTruthy();
     expect(ident!.verified, `identity verify failed: ${ident!.reason ?? 'n/a'}`).toBe(true);
     expect(ident!.pubkey).toMatch(/^[A-Za-z0-9+/=]{80,}$/);
+
+    // 8. WebRTC sigint attestation — our own STUN server returned one or
+    //    more encrypted XOR-MAPPED-ADDRESS blobs that the server decoded
+    //    with the shared AES key. Outcomes depend on the runner's network:
+    //      - single-homed (mobile, single NIC): `status: "ok"`, with a
+    //        MAC-verified IPv4 extracted.
+    //      - multi-NIC (dev boxes, VPN, dual-stack): `status: "multi_candidates"`
+    //        — server refuses to silently pick one. No IP in that row.
+    //    Both prove end-to-end wiring (client emits sigintCandidates,
+    //    server decodes per policy, row gets webrtc_sigint attached).
+    const analysis = (record as { analysis: Record<string, unknown> }).analysis;
+    const webrtcSigint = analysis.webrtc_sigint as
+      | {
+          status?: string;
+          candidate_count?: number;
+          ip?: string;
+          mac_valid?: boolean;
+          fresh?: boolean;
+        }
+      | undefined;
+    expect(webrtcSigint, 'analysis.webrtc_sigint should be present').toBeTruthy();
+    expect(
+      webrtcSigint!.candidate_count,
+      'at least one sigintCandidate reached the server',
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      webrtcSigint!.status,
+      `webrtc_sigint status unexpected: ${JSON.stringify(webrtcSigint)}`,
+    ).toMatch(/^(ok|multi_candidates)$/);
+
+    // 9. IP-consistency analyzer ran and produced an integrity score.
+    //    Two environment-dependent branches:
+    const ipAnalysis = analysis.ip as {
+      integrity?: number;
+      ip?: string | null;
+      ips?: { webrtc?: string | null };
+    };
+    expect(ipAnalysis, 'analysis.ip should be present').toBeTruthy();
+    expect(typeof ipAnalysis.integrity, 'integrity score is a number').toBe(
+      'number',
+    );
+
+    if (webrtcSigint!.status === 'ok') {
+      // Single-candidate path: full MAC verification, IP is surfaced.
+      expect(webrtcSigint!.mac_valid, 'STUN MAC should verify').toBe(true);
+      expect(webrtcSigint!.fresh, 'STUN payload should be fresh').toBe(true);
+      expect(webrtcSigint!.ip, 'decoded IP should be IPv4').toMatch(
+        /^\d{1,3}(\.\d{1,3}){3}$/,
+      );
+      expect(
+        ipAnalysis.integrity,
+        `integrity score too low from a clean browser: ${ipAnalysis.integrity}`,
+      ).toBeGreaterThanOrEqual(0.5);
+      expect(
+        ipAnalysis.ip,
+        'representative IP surfaced at integrity ≥ 0.5',
+      ).toMatch(/^\d{1,3}(\.\d{1,3}){3}$/);
+      expect(ipAnalysis.ips?.webrtc).toBe(webrtcSigint!.ip);
+    } else {
+      // Multi-candidate path: server correctly refuses to pick a single
+      // IP. Score collapses to the "no webrtc" tier (0.5) because we have
+      // no MAC-verified evidence to compare against probes.
+      expect(
+        ipAnalysis.integrity,
+        'multi-candidate: integrity should collapse to ≤ 0.5 (no verified webrtc)',
+      ).toBeLessThanOrEqual(0.5);
+    }
   });
 
   test('superseded run rejects first, resolves second', async ({ page }) => {
