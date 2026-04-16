@@ -33,6 +33,8 @@ export interface SigintConfig {
 export interface TlsFingerprintResponse {
   /** Visitor ID (UUID format) */
   id: string;
+  /** Unix seconds when the _fpid cookie was originally minted */
+  issuedAt?: number;
   /** Whether this is a new visitor (cookie was just set) */
   new: boolean;
   /** Client IP address */
@@ -45,6 +47,10 @@ export interface TlsFingerprintResponse {
   ja3: string | null;
   /** JA4 TLS fingerprint (newer, more detailed) */
   ja4: string | null;
+  /** Unix seconds when this token was minted — used for API freshness check */
+  ts?: number;
+  /** SipHash-2-4 signature from the CF edge; forwarded to API for verification */
+  sig?: string;
 }
 
 /** TCP connection info from kernel */
@@ -380,9 +386,11 @@ export async function fetchTlsFingerprint(config: SigintConfig): Promise<{
     }
 
     const text = await response.text();
-    // Response format: base64(json).signature_hex — split on last '.' to get payload
+    // Response format: base64(json).signature_hex — split on last '.' so the
+    // API can verify the signature against the parsed payload.
     const dotIdx = text.lastIndexOf('.');
     const b64 = dotIdx !== -1 ? text.slice(0, dotIdx) : text;
+    const sig = dotIdx !== -1 ? text.slice(dotIdx + 1) : '';
     let json: string;
     try {
       json = atob(b64);
@@ -395,6 +403,7 @@ export async function fetchTlsFingerprint(config: SigintConfig): Promise<{
     }
     try {
       const data = JSON.parse(json) as TlsFingerprintResponse;
+      if (sig) data.sig = sig;
       return { data, error: null, durationMs };
     } catch {
       return {

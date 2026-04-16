@@ -481,7 +481,11 @@ describe('collectSigintData', () => {
 
     const result = await collectSigintData(config);
 
-    expect(result.tlsFingerprint).toEqual(mockResponse);
+    // fetchTlsFingerprint now preserves the sig suffix for API-side verification
+    expect(result.tlsFingerprint).toEqual({
+      ...mockResponse,
+      sig: 'deadbeefcafe0000',
+    });
     expect(result.timing.tlsFingerprintMs).toBeDefined();
     expect(result.errors).toHaveLength(0);
   });
