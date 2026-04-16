@@ -310,12 +310,15 @@ async function fetchWithTimeout<T>(
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    // Note: credentials: 'include' requires server to return specific origin, not '*'
-    // If server returns Access-Control-Allow-Origin: *, use 'same-origin' instead
+    // `credentials: 'omit'` here because this generic helper fetches the
+    // h2/tcp probe endpoints, which return `Access-Control-Allow-Origin: *`
+    // and thus *cannot* be used with credentials (browser blocks it with
+    // "Credential is not supported if ACAO is '*'"). Cookie-bearing endpoints
+    // (e.g. id.argus.pw TLS probe) have their own fetch that uses 'include'.
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
-      credentials: 'omit', // Omit cookies to allow wildcard CORS (server fix needed for cookie support)
+      credentials: 'omit',
     });
 
     clearTimeout(timeoutId);
@@ -370,9 +373,12 @@ export async function fetchTlsFingerprint(config: SigintConfig): Promise<{
   const timeoutId = setTimeout(() => controller.abort(), merged.timeout);
 
   try {
+    // `credentials: 'include'` is required so the browser persists the
+    // `_fpid` cookie CloudFront sets on this response and sends it back on
+    // subsequent TLS probes. id.argus.pw returns ACAO:<origin> + ACAC:true.
     const response = await fetch(url, {
       signal: controller.signal,
-      credentials: 'omit',
+      credentials: 'include',
     });
     clearTimeout(timeoutId);
     const durationMs = performance.now() - start;

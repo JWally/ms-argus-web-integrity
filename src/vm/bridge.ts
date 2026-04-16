@@ -501,6 +501,9 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       try {
         const resp = await fetch(ctx.apiEndpoint, {
           method: 'POST',
+          // Send the `_fpid` third-party cookie (scoped to .argus.pw) so
+          // the API can verify its sig against the current TLS token.
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/octet-stream',
             'X-Argus-Origin': clientPubKeyB64,
