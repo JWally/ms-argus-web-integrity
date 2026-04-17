@@ -23,6 +23,108 @@
 // built the entire payload from a single ctx.getPayload thunk — one hook
 // leaked everything. Now bytecode assembles device itself; bridge only
 // provides individual unlabeled slices via ApiBridge.prototype.get.
+//
+// HISTORY (bytecode-native-stringify): The payload JSON is now serialized
+// in bytecode via a recursive walker (stringify/jsonEscape/hexDigit below).
+// Previously the bridge's GET_PAYLOAD_JSON (0x13) did JSON.stringify in JS,
+// giving attackers a chokepoint to substitute clean-baseline payloads via
+// window.JSON.stringify hooks. No JS-level stringify call is on the
+// payload path anymore — relies on OBJ_KEYS (0x64) / IS_ARRAY (0x66) opcodes.
+
+// ── JSON serialization helpers ───────────────────────────────────────
+// Recursive walker producing a valid JSON string from a JS value. Output
+// is not byte-identical to JSON.stringify (e.g. undefined→null in arrays,
+// key ordering) — byte-stability isn't required since the server parses
+// semantically. Rules followed:
+//   - null/undefined → 'null' (undefined in object keys → key omitted)
+//   - numbers: NaN/±Infinity → 'null'; otherwise String(n)
+//   - strings: double-quoted with \" \\ \n \r \t \b \f \u00XX escapes
+//   - arrays/objects: recursive; object keys enumerated via Object.keys
+function hexDigit(n) {
+  if (n < 10) { return String.fromCharCode(48 + n); }
+  return String.fromCharCode(87 + n);
+}
+
+function jsonEscape(s) {
+  let out = '"';
+  let i = 0;
+  while (i < s.length) {
+    let c = s.charCodeAt(i);
+    if (c === 34) {
+      out = out + '\\"';
+    } else if (c === 92) {
+      out = out + '\\\\';
+    } else if (c === 10) {
+      out = out + '\\n';
+    } else if (c === 13) {
+      out = out + '\\r';
+    } else if (c === 9) {
+      out = out + '\\t';
+    } else if (c === 8) {
+      out = out + '\\b';
+    } else if (c === 12) {
+      out = out + '\\f';
+    } else if (c < 16) {
+      out = out + '\\u000' + hexDigit(c);
+    } else if (c < 32) {
+      out = out + '\\u001' + hexDigit(c - 16);
+    } else {
+      out = out + String.fromCharCode(c);
+    }
+    i = i + 1;
+  }
+  return out + '"';
+}
+
+function stringify(v) {
+  if (v === null) { return 'null'; }
+  let t = typeof v;
+  if (t === 'undefined') { return 'null'; }
+  if (t === 'string') { return jsonEscape(v); }
+  if (t === 'number') {
+    // Non-finite guard (NaN, ±Infinity) in one expression:
+    //   finite n  → n * 0 === 0
+    //   NaN       → NaN * 0 === NaN  !== 0
+    //   ±Infinity → ±Inf * 0 === NaN !== 0
+    // Avoids isNaN/isFinite, which aren't wired in the shipped opcode table.
+    if (v * 0 !== 0) { return 'null'; }
+    return String(v);
+  }
+  if (t === 'boolean') {
+    if (v) { return 'true'; }
+    return 'false';
+  }
+  if (Array.isArray(v)) {
+    let arrOut = '[';
+    let ai = 0;
+    while (ai < v.length) {
+      if (ai > 0) { arrOut = arrOut + ','; }
+      let item = v[ai];
+      if (item === undefined) {
+        arrOut = arrOut + 'null';
+      } else {
+        arrOut = arrOut + stringify(item);
+      }
+      ai = ai + 1;
+    }
+    return arrOut + ']';
+  }
+  let keys = Object.keys(v);
+  let objOut = '{';
+  let first = 1;
+  let oi = 0;
+  while (oi < keys.length) {
+    let k = keys[oi];
+    let val = v[k];
+    if (val !== undefined) {
+      if (first === 0) { objOut = objOut + ','; }
+      objOut = objOut + jsonEscape(k) + ':' + stringify(val);
+      first = 0;
+    }
+    oi = oi + 1;
+  }
+  return objOut + '}';
+}
 
 let tmp = 0;
 let i = 0;
@@ -96,13 +198,32 @@ if (serverPubKey.length > 0) {
     errors: __api_get(0x62),
   };
 
-  // Build payload JSON. Args: (device, tlsResult, tcpToken, h2Token, pubkey, sig).
-  // The pubkey+sig are attached as payload.device_identity when non-empty.
-  // Bytecode owns that composition; bridge just serializes.
-  let payloadJSON = __api_call_async(0x13, device, tlsResult, tcpToken, h2Token, devicePubkey, deviceSig);
+  // Build payload in bytecode, then serialize via the local walker.
+  // pubkey+sig attach as device_identity when both non-empty. Bridge provides
+  // only the opaque UUID (0x10) and meta (0x11) — no payload-level JSON
+  // serialization is exposed to JS-level attackers anymore.
+  let identifiers = { session_id: __api_get(0x10) };
+  let meta = __api_get(0x11);
+  let payload = {
+    identifiers: identifiers,
+    device: device,
+    meta: meta,
+  };
+  if (tlsResult.length > 0) { payload.sigintTls = tlsResult; }
+  if (tcpToken.length > 0) { payload.sigintTcpToken = tcpToken; }
+  if (h2Token.length > 0) { payload.sigintH2Token = h2Token; }
+  if (devicePubkey.length > 0) {
+    if (deviceSig.length > 0) {
+      payload.device_identity = { pubkey: devicePubkey, sig: deviceSig };
+    }
+  }
+  let payloadJSON = stringify(payload);
   device = 0;
   devicePubkey = 0;
   deviceSig = 0;
+  payload = 0;
+  identifiers = 0;
+  meta = 0;
 
   if (payloadJSON.length > 0) {
     // ── XOR scramble payload before ECDH encryption ──────────────

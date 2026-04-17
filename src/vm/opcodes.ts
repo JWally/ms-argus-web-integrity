@@ -56,7 +56,9 @@ export const Op = {
   ARR_NEW: 0x61,
   ARR_PUSH: 0x62,
   ARR_GET: 0x63,
+  OBJ_KEYS: 0x64,  // dst = Object.keys(src1) — own enumerable string keys
   ARR_LEN: 0x65,
+  IS_ARRAY: 0x66,  // dst = Array.isArray(src1)
 
   // === String (0x70-0x7F) ===
   STR_CONCAT: 0x70,

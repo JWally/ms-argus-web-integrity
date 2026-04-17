@@ -652,6 +652,32 @@ export class CodeGenerator {
         return dst;
       }
 
+      // Object.keys(x) → OBJ_KEYS opcode (own enumerable string keys)
+      if (
+        obj.type === 'Identifier' &&
+        (obj as { name: string }).name === 'Object' &&
+        prop.type === 'Identifier' &&
+        (prop as { name: string }).name === 'keys'
+      ) {
+        const argReg = this.compileExpression(args[0]);
+        this.emit(Op.OBJ_KEYS, dst, argReg);
+        this.freeTemp(argReg);
+        return dst;
+      }
+
+      // Array.isArray(x) → IS_ARRAY opcode
+      if (
+        obj.type === 'Identifier' &&
+        (obj as { name: string }).name === 'Array' &&
+        prop.type === 'Identifier' &&
+        (prop as { name: string }).name === 'isArray'
+      ) {
+        const argReg = this.compileExpression(args[0]);
+        this.emit(Op.IS_ARRAY, dst, argReg);
+        this.freeTemp(argReg);
+        return dst;
+      }
+
       // String/Array method calls: obj.method(args)
       if (prop.type === 'Identifier') {
         const methodName = (prop as { name: string }).name;
