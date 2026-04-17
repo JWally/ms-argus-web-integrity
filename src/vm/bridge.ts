@@ -189,12 +189,20 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // unsigned submission (server tolerates missing sig headers during rollout).
   const cryptoIdPromise = getCryptoId().catch(() => null);
 
-  // Nested double-iframe → pristine crypto.subtle. Bypasses bot hooks that
-  // patch top-level crypto (PHANTOM_DARKNESS etc.). Used by the ECDH APIs
-  // (0x30-0x32). Leave iframes attached until VM execution completes —
-  // removing them early (setTimeout 0) destroys the crypto context mid-flight
-  // because async sigint fetches yield the event loop.
+  // Nested double-iframe → pristine crypto.subtle + JSON.stringify. Bypasses
+  // bot hooks that patch top-level crypto (PHANTOM_DARKNESS etc.) or wrap
+  // JSON.stringify to swap the pre-encryption payload. Used by the ECDH APIs
+  // (0x30-0x32) and payload serialization (0x13 / TLS fingerprint). Leave
+  // iframes attached until VM execution completes — removing them early
+  // (setTimeout 0) destroys the crypto context mid-flight because async
+  // sigint fetches yield the event loop.
+  //
+  // iframeStringify closes the chokepoint-MITM attack where a hook on
+  // window.JSON.stringify substitutes a pre-recorded clean-baseline payload
+  // between device assembly and XOR/compress/encrypt. Tactical stopgap —
+  // durable fix is bytecode-native stringify.
   let iframeCrypto: SubtleCrypto | null = null;
+  let iframeStringify: typeof JSON.stringify | null = null;
   try {
     const host = document.createElement('div');
     const shadow = host.attachShadow({ mode: 'closed' });
@@ -215,11 +223,18 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         } catch {
           /* crypto unavailable in iframe */
         }
+        try {
+          const win2JSON = (win2 as unknown as { JSON: typeof JSON }).JSON;
+          iframeStringify = win2JSON.stringify.bind(win2JSON);
+        } catch {
+          /* JSON unavailable in iframe */
+        }
       }
     }
   } catch {
     /* iframe creation failed */
   }
+  const safeStringify: typeof JSON.stringify = iframeStringify ?? JSON.stringify;
 
   // ── Crypto context APIs ───────────────────────────────────────────
 
@@ -273,7 +288,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         payload.device_identity = { pubkey, sig };
       }
 
-      return JSON.stringify(payload);
+      return safeStringify(payload);
     },
   });
 
@@ -438,7 +453,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
 
   const tlsPromise: Promise<string> = ctx.sigintConfig
     ? fetchTlsFingerprint(ctx.sigintConfig)
-        .then((r) => (r ? JSON.stringify(r) : ''))
+        .then((r) => (r ? safeStringify(r) : ''))
         .catch(() => '')
     : Promise.resolve('');
 
