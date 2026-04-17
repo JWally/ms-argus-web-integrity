@@ -20,6 +20,7 @@ import {
   fetchH2Probe,
 } from '../utils/sigint';
 import { getCryptoId } from '../utils/get-crypto-id';
+import { getClientUuid } from '../utils/get-client-uuid';
 import type { IntegrityResult } from '../integrity';
 
 export interface ApiHandler {
@@ -88,6 +89,14 @@ export const enum BridgeApi {
   // on any failure so bytecode can detect-and-skip without branching.
   GET_CRYPTO_PUBKEY = 0x1f,
   SIGN_BYTES = 0x33,
+
+  // ── Three-store client UUID (persistence signal) ──────────────
+  // 0x20 returns { id, conflicts } — id is the persistent UUID chosen
+  // across IDB / localStorage / cookie; conflicts lists stores that held
+  // a different value (hint for server correlation on partial clears).
+  // Warmed at bridge construction so IDB is open by the time bytecode
+  // asks. Returns null on total failure; bytecode elides the field.
+  GET_CLIENT_UUID = 0x20,
 
   // ── Async ECDH APIs (called via API_CALL_ASYNC) ────────────────
   ECDH_GENERATE_KEY = 0x30,
@@ -196,6 +205,12 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // unsigned submission (server tolerates missing sig headers during rollout).
   const cryptoIdPromise = getCryptoId().catch(() => null);
 
+  // Warm the three-store client UUID in parallel with the keypair. Reads
+  // IDB + localStorage + cookie, respawns across any missing stores, and
+  // memoises. Resolves to null on total failure so the bytecode can elide
+  // the device.client_uuid field rather than block submission.
+  const clientUuidPromise = getClientUuid().catch(() => null);
+
   // Nested double-iframe → pristine crypto.subtle + JSON.stringify. Bypasses
   // bot hooks that patch top-level crypto (PHANTOM_DARKNESS etc.). Used by
   // the ECDH APIs (0x30-0x32) and the residual TLS-result stringify below.
@@ -301,6 +316,20 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         return cryptoId?.publicKey ?? '';
       } catch {
         return '';
+      }
+    },
+  });
+
+  // 0x20 returns the full client-UUID bundle { id, conflicts } or null.
+  // Async because the warmed promise may still be pending when the bytecode
+  // reaches this call (IDB open + read can take tens of ms on cold start).
+  // Null return lets bytecode skip attaching the fields entirely.
+  bridge.register(BridgeApi.GET_CLIENT_UUID, {
+    call: async () => {
+      try {
+        return await clientUuidPromise;
+      } catch {
+        return null;
       }
     },
   });

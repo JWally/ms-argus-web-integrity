@@ -198,6 +198,20 @@ if (serverPubKey.length > 0) {
     errors: __api_get(0x62),
   };
 
+  // Three-store client UUID (IDB + localStorage + first-party cookie).
+  // Complements device_identity's ECDSA keypair: the key can't respawn
+  // (non-extractable), but the UUID can — it survives single-store clears.
+  // Server uses it for cross-session graph correlation. null bundle means
+  // total storage failure; we elide the field in that case.
+  let uuidBundle = __api_call_async(0x20);
+  if (uuidBundle) {
+    device.client_uuid = uuidBundle.id;
+    if (uuidBundle.conflicts.length > 0) {
+      device.client_uuid_conflicts = uuidBundle.conflicts;
+    }
+  }
+  uuidBundle = 0;
+
   // Build payload in bytecode, then serialize via the local walker.
   // pubkey+sig attach as device_identity when both non-empty. Bridge provides
   // only the opaque UUID (0x10) and meta (0x11) — no payload-level JSON
