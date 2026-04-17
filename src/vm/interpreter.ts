@@ -380,6 +380,14 @@ function dispatch(
       reg[dst] = (reg[src1] as R[]).length;
       vm.pc += 1;
       break;
+    case Op.OBJ_KEYS:
+      reg[dst] = Object.keys(reg[src1] as object);
+      vm.pc += 1;
+      break;
+    case Op.IS_ARRAY:
+      reg[dst] = Array.isArray(reg[src1]);
+      vm.pc += 1;
+      break;
 
     // === String ===
     case Op.STR_CONCAT:

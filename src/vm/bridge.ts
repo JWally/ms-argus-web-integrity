@@ -68,8 +68,14 @@ export class ApiBridge {
  * call site; registered-but-unused APIs are attack surface without benefit.
  */
 export const enum BridgeApi {
-  // ── Crypto context APIs ────────────────────────────────────────
-  GET_PAYLOAD_JSON = 0x13, // assembles final JSON; receives `device` from bytecode
+  // ── Payload composition helpers (opaque singletons) ────────────
+  // 0x10 / 0x11 replace the old GET_PAYLOAD_JSON (0x13) handler. Bytecode
+  // now assembles the full payload and runs a bytecode-native stringify,
+  // so no JS-level serializer sits on the payload path. These two APIs
+  // return individual values the walker needs (session UUID + meta),
+  // hooking either only leaks that one piece rather than the whole payload.
+  GET_PAYLOAD_UUID = 0x10,
+  GET_META = 0x11,
   GET_SERVER_PUB_KEY = 0x14,
 
   // ── Session token for inner XOR scramble ──────────────────────
@@ -124,9 +130,10 @@ export const enum BridgeApi {
 export interface ArgusVmContext {
   /**
    * Pre-collected fingerprint. Slice handlers (0x50-0x62) return individual
-   * sub-objects from this; meta is read by GET_PAYLOAD_JSON. No `getPayload`
-   * thunk — the bytecode composes the device object itself, eliminating the
-   * "one hook leaks everything" attack on a single payload-builder closure.
+   * sub-objects from this; meta is read via GET_META (0x11). No `getPayload`
+   * thunk — the bytecode composes the device object and serializes it
+   * natively, eliminating the "one hook leaks everything" attack on a single
+   * payload-builder closure.
    */
   fingerprint: IntegrityResult;
   /** Raw P-256 server public key (88-char base64) — from h2-probe */
@@ -190,17 +197,16 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   const cryptoIdPromise = getCryptoId().catch(() => null);
 
   // Nested double-iframe → pristine crypto.subtle + JSON.stringify. Bypasses
-  // bot hooks that patch top-level crypto (PHANTOM_DARKNESS etc.) or wrap
-  // JSON.stringify to swap the pre-encryption payload. Used by the ECDH APIs
-  // (0x30-0x32) and payload serialization (0x13 / TLS fingerprint). Leave
-  // iframes attached until VM execution completes — removing them early
-  // (setTimeout 0) destroys the crypto context mid-flight because async
-  // sigint fetches yield the event loop.
+  // bot hooks that patch top-level crypto (PHANTOM_DARKNESS etc.). Used by
+  // the ECDH APIs (0x30-0x32) and the residual TLS-result stringify below.
+  // Leave iframes attached until VM execution completes — removing them
+  // early (setTimeout 0) destroys the crypto context mid-flight because
+  // async sigint fetches yield the event loop.
   //
-  // iframeStringify closes the chokepoint-MITM attack where a hook on
-  // window.JSON.stringify substitutes a pre-recorded clean-baseline payload
-  // between device assembly and XOR/compress/encrypt. Tactical stopgap —
-  // durable fix is bytecode-native stringify.
+  // The payload JSON itself is now serialized inside the VM (see stringify()
+  // in scripts/vm-src/main.ts) — no JS-level stringify is called on it.
+  // iframeStringify therefore only protects the TLS-fingerprint string that
+  // feeds into the sigintTls field, a lower-value target.
   let iframeCrypto: SubtleCrypto | null = null;
   let iframeStringify: typeof JSON.stringify | null = null;
   try {
@@ -236,60 +242,19 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   }
   const safeStringify: typeof JSON.stringify = iframeStringify ?? JSON.stringify;
 
-  // ── Crypto context APIs ───────────────────────────────────────────
+  // ── Payload composition helpers ───────────────────────────────────
 
-  // 0x13: assemble final payload JSON (sigint tokens + identity + bytecode-built device).
-  // args: (device, tlsResult, tcpToken, h2Token).  ASYNC — awaits persistent
-  // ECDSA keypair and signs the payload.
-  //
-  // The `device` object is composed in bytecode by chaining 0x50-0x62 slice
-  // gets (vm-pristine-vault). This bridge no longer reaches into the
-  // fingerprint to build device.* itself — only meta is read here, since
-  // bytecode has no use for it. Closing the "one hook on getPayload leaks
-  // everything" attack: a reverser hooking ApiBridge.prototype.get sees
-  // individual unlabeled slices arriving over time, not the entire payload
-  // from one call site.
-  //
-  // Bytecode assembles device_identity itself (via 0x1f pubkey getter + 0x33
-  // signer over XOR'd h2Token) and passes the finished pubkey/sig strings in.
-  // Keeping sig assembly out of the bridge means a reverser hooking
-  // ApiBridge.prototype.call sees only opaque strings arriving here — they'd
-  // have to separately hook 0x33 AND reverse the XOR logic in bytecode.
-  bridge.register(BridgeApi.GET_PAYLOAD_JSON, {
-    call: async (_thisArg, args) => {
-      const device = args[0] as Record<string, unknown>;
-      const tlsResult = args[1];
-      const tcpToken = args[2];
-      const h2Token = args[3];
-      const pubkey = args[4];
-      const sig = args[5];
+  // 0x10: fresh session UUID. Hooking this only leaks a correlation id, which
+  // is immediately visible server-side on the decrypted payload anyway —
+  // swapping it doesn't defeat the fingerprint.
+  bridge.register(BridgeApi.GET_PAYLOAD_UUID, {
+    get: () => crypto.randomUUID(),
+  });
 
-      const payload: Record<string, unknown> = {
-        identifiers: { session_id: crypto.randomUUID() },
-        device,
-        meta: ctx.fingerprint.meta,
-      };
-
-      if (tlsResult) {
-        payload.sigintTls = tlsResult;
-      }
-      if (tcpToken) {
-        payload.sigintTcpToken = tcpToken;
-      }
-      if (h2Token) {
-        payload.sigintH2Token = h2Token;
-      }
-      if (
-        typeof pubkey === 'string' &&
-        pubkey.length > 0 &&
-        typeof sig === 'string' &&
-        sig.length > 0
-      ) {
-        payload.device_identity = { pubkey, sig };
-      }
-
-      return safeStringify(payload);
-    },
+  // 0x11: meta sub-object (version + timing). Raw object, read-only from the
+  // bytecode's perspective.
+  bridge.register(BridgeApi.GET_META, {
+    get: () => ctx.fingerprint.meta,
   });
 
   // ── Fingerprint slice APIs (0x50-0x62) ────────────────────────────
