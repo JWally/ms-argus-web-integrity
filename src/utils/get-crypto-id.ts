@@ -26,8 +26,17 @@
 import { withTimeout } from './with-timeout';
 
 const DATABASE_NAME = 'argus-integrity-db';
-const DATABASE_VERSION = 1;
+/**
+ * Schema version. Bump + extend the upgrade handler in `openIntegrityDb`
+ * below when adding a new object store. Existing DBs migrate on first open.
+ *
+ * v1 → v2: added `client-uuid` store for the three-store persistence
+ *   feature (see get-client-uuid.ts).
+ */
+const DATABASE_VERSION = 2;
 const TABLE_NAME_KEYS = 'crypto-keys';
+/** Re-exported for get-client-uuid.ts so both files agree on the store name. */
+export const TABLE_NAME_CLIENT_UUID = 'client-uuid';
 const INDEX_VALUE_KEY = 'primary';
 
 /** Timeout for IndexedDB operations (ms). Prevents infinite hangs in Firefox/private mode. */
@@ -62,13 +71,25 @@ interface StoredKeys {
 let memoised: CryptoKeys | undefined;
 let inflight: Promise<CryptoKeys> | undefined;
 
-const openDb = (): Promise<IDBDatabase> =>
+/**
+ * Open the shared argus-integrity-db. Exported so get-client-uuid.ts can
+ * reuse the same schema + upgrade path — keeping one source of truth
+ * prevents the two consumers from racing with divergent upgrade handlers.
+ *
+ * The upgrade handler is additive: missing stores are created on any
+ * v(n)→v(current) jump, so a DB opened by one consumer after the other
+ * already upgraded sees a complete schema either way.
+ */
+export const openIntegrityDb = (): Promise<IDBDatabase> =>
   new Promise((res, rej) => {
     const req = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(TABLE_NAME_KEYS)) {
         db.createObjectStore(TABLE_NAME_KEYS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(TABLE_NAME_CLIENT_UUID)) {
+        db.createObjectStore(TABLE_NAME_CLIENT_UUID, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => res(req.result);
@@ -140,7 +161,7 @@ async function writeDecoys(db: IDBDatabase): Promise<void> {
 }
 
 const setupCryptography = async (): Promise<CryptoKeys> => {
-  const db = await withTimeout(openDb(), IDB_TIMEOUT_MS, undefined).catch(
+  const db = await withTimeout(openIntegrityDb(), IDB_TIMEOUT_MS, undefined).catch(
     () => undefined,
   );
 
