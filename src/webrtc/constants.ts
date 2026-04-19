@@ -36,5 +36,7 @@ export const KNOWN_FOUNDATIONS: Record<string, string> = {
   '2268587630': 'WireGuard',
 };
 
-/** Timeout for ICE candidate gathering (ms). */
-export const ICE_GATHER_TIMEOUT = 1000;
+/** Timeout for ICE candidate gathering (ms). Bumped to 10s while
+ *  investigating cellular iPhone regression where srflx failed to
+ *  arrive inside the prior 1s window (AT&T Mobility, 107.116.x). */
+export const ICE_GATHER_TIMEOUT = 10_000;
