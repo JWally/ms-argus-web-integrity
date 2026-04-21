@@ -7,7 +7,10 @@ import { MiniVM, VMStatus, isFuncObj } from './vm';
 import type { CallFrame, FuncObj } from './vm';
 import type { ApiBridge } from './bridge';
 
-const MAX_INSTRUCTIONS = 2_000_000;
+// 8M headroom: Proxy-heavy clients (e.g. puppeteer-extra-stealth) inflate
+// opcode counts during bytecode-native payload serialization enough to blow
+// a 2M budget. Still bounded — this is the DoS / runaway-loop guard.
+const MAX_INSTRUCTIONS = 8_000_000;
 
 export interface ExecutionResult {
   value: unknown;
