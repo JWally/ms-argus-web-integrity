@@ -1,12 +1,22 @@
+/**
+ * Roundtrip smoke test: packed VM_BYTECODE → unpack → decode → walk instructions.
+ *
+ * Historically named "xor" because the only protection was XOR scrambling.
+ * The unpack pipeline now also covers salt-based key hiding + time-bucketed
+ * descramble (src/vm/unpack.ts) so this test verifies the entire chain.
+ */
+
 import { decode } from '../src/vm/decoder';
 import { Op, hasOperand } from '../src/vm/opcodes';
-import { VM_BYTECODE, VM_KEY } from '../src/vm/bytecode-modules';
+import { VM_BYTECODE } from '../src/vm/bytecode-modules';
+import { unpack } from '../src/vm/unpack';
 
-// Decode exactly as the browser does: base64 → XOR descramble → decode
-const scrambled = Uint8Array.from(atob(VM_BYTECODE), c => c.charCodeAt(0));
-const key = Uint8Array.from(VM_KEY.match(/../g)!.map(h => parseInt(h, 16)));
-const binary = new Uint8Array(scrambled.length);
-for (let i = 0; i < scrambled.length; i++) binary[i] = scrambled[i] ^ key[i % key.length];
+async function main() {
+const binary = await unpack(VM_BYTECODE);
+if (!binary) {
+  console.error('ERROR: unpack returned null — blob may be stale for the current bucket');
+  process.exit(2);
+}
 
 const mod = decode(binary.buffer as ArrayBuffer);
 console.log(`Version: ${mod.version}`);
@@ -45,3 +55,7 @@ for (let pc = 0; pc < mod.code.length; ) {
 }
 
 console.log(errors ? `\n${errors} ERRORS` : `\nAll OK — ${mod.code.length} words clean`);
+if (errors) process.exit(1);
+}
+
+main().catch((err) => { console.error(err); process.exit(1); });

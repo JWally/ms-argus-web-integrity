@@ -2,7 +2,7 @@
  * Argus-Web VM orchestrator.
  *
  * Ported from ms-argus-bio/src/vm/tripwire.ts.
- * Loads XOR-scrambled bytecode, descrambles, runs async VM. The VM runs
+ * Loads packed bytecode (see src/vm/unpack.ts), unpacks, runs async VM. The VM runs
  * sigint probes + ECDH encrypt + POST. Classification is server-side.
  *
  * Returns:
@@ -13,6 +13,7 @@
 
 import { decode } from './decoder';
 import { executeAsync } from './interpreter';
+import { unpack } from './unpack';
 import { createArgusVmBridge } from './bridge';
 import type { ArgusVmContext } from './bridge';
 import {
@@ -22,7 +23,7 @@ import {
 } from '../utils/sigint';
 import type { IntegrityResult } from '../integrity';
 
-let bytecodeCache: { bytecode: string; key: string } | null = null;
+let bytecodeCache: { bytecode: string } | null = null;
 
 /** Module-level prefetch slot — populated by prefetchArgusVm(), consumed by runArgusVm() */
 let _prefetchSlot: Promise<{
@@ -40,39 +41,11 @@ async function loadBytecodeModules() {
   if (bytecodeCache) return bytecodeCache;
   try {
     const mod = await import('./bytecode-modules');
-    bytecodeCache = {
-      bytecode: mod.VM_BYTECODE,
-      key: mod.VM_KEY,
-    };
+    bytecodeCache = { bytecode: mod.VM_BYTECODE };
     return bytecodeCache;
   } catch {
     return null;
   }
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
-  }
-  return bytes;
-}
-
-function xorDescramble(data: Uint8Array, key: Uint8Array): Uint8Array {
-  const result = new Uint8Array(data.length);
-  for (let i = 0; i < data.length; i++) {
-    result[i] = data[i] ^ key[i % key.length];
-  }
-  return result;
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  const binaryStr = atob(b64);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
-  }
-  return bytes;
 }
 
 /**
@@ -190,9 +163,11 @@ export async function runArgusVm(
   }
 
   try {
-    const scrambled = base64ToBytes(modules.bytecode);
-    const key = hexToBytes(modules.key);
-    const binary = xorDescramble(scrambled, key);
+    const binary = await unpack(modules.bytecode);
+    if (!binary) {
+      console.warn('[argus-vm] bytecode unpack failed (stale blob?)');
+      return fallback;
+    }
     const mod = decode(binary.buffer as ArrayBuffer);
 
     let submissionError: string | null = null;
@@ -250,9 +225,8 @@ export async function runVmDetection(
   if (!mods) return;
 
   try {
-    const scrambled = base64ToBytes(mods.bytecode);
-    const key = hexToBytes(mods.key);
-    const binary = xorDescramble(scrambled, key);
+    const binary = await unpack(mods.bytecode);
+    if (!binary) return;
     const mod = decode(binary.buffer as ArrayBuffer);
 
     const ctx: ArgusVmContext = {
