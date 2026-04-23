@@ -109,6 +109,14 @@ export const enum BridgeApi {
   FETCH_H2_PROBE = 0x42,
   POST_PAYLOAD = 0x43, // POST octet-stream → returns session_id
 
+  // ── Anti-debug timing source ──────────────────────────────────
+  // Returns a high-resolution monotonic timestamp (ms, float). Captured
+  // from the nested pristine iframe at bridge construction so a later
+  // page-level patch of performance.now doesn't affect it. Bytecode uses
+  // this to detect breakpoints / step-debugging: a loop that normally
+  // runs in <5ms blowing past 500ms is a strong tamper signal.
+  PERF_NOW = 0x70,
+
   // ── Fingerprint slice APIs (vm-pristine-vault) ─────────────────
   // Each slice returns one device.* sub-object pre-collected by
   // collectIntegrity(). Bytecode composes the device object itself,
@@ -224,6 +232,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // feeds into the sigintTls field, a lower-value target.
   let iframeCrypto: SubtleCrypto | null = null;
   let iframeStringify: typeof JSON.stringify | null = null;
+  let iframePerfNow: (() => number) | null = null;
   try {
     const host = document.createElement('div');
     const shadow = host.attachShadow({ mode: 'closed' });
@@ -245,6 +254,12 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
           /* crypto unavailable in iframe */
         }
         try {
+          const win2Perf = (win2 as unknown as { performance: Performance }).performance;
+          iframePerfNow = win2Perf.now.bind(win2Perf);
+        } catch {
+          /* performance unavailable in iframe */
+        }
+        try {
           const win2JSON = (win2 as unknown as { JSON: typeof JSON }).JSON;
           iframeStringify = win2JSON.stringify.bind(win2JSON);
         } catch {
@@ -256,6 +271,17 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
     /* iframe creation failed */
   }
   const safeStringify: typeof JSON.stringify = iframeStringify ?? JSON.stringify;
+
+  // Pristine monotonic timer for anti-debug timing checks in bytecode.
+  // Prefer the nested iframe's performance.now (captured before any page
+  // patching); fall back to top-level performance.now then Date.now.
+  // Bound to its owner so later reassignment of the bare reference can't
+  // neutralize us.
+  const safePerfNow: () => number =
+    iframePerfNow ??
+    (typeof performance !== 'undefined'
+      ? performance.now.bind(performance)
+      : Date.now.bind(Date));
 
   // ── Payload composition helpers ───────────────────────────────────
 
@@ -270,6 +296,11 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // bytecode's perspective.
   bridge.register(BridgeApi.GET_META, {
     get: () => ctx.fingerprint.meta,
+  });
+
+  // 0x70: pristine monotonic timer for bytecode-side timing checks.
+  bridge.register(BridgeApi.PERF_NOW, {
+    get: () => safePerfNow(),
   });
 
   // ── Fingerprint slice APIs (0x50-0x62) ────────────────────────────

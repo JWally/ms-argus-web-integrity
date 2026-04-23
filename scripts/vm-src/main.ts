@@ -130,6 +130,18 @@ let tmp = 0;
 let i = 0;
 const vm = {};
 
+// ── Anti-debug timing ─────────────────────────────────────────────────
+// Samples pristine performance.now (via 0x70) at key checkpoints. Real
+// execution on any device completes in well under these thresholds; only
+// an interactive debugger (breakpoint, step-through, console paused)
+// inflates them enough to flip a bit. Fields:
+//   0x01  total bytecode runtime > 30s (breakpoint observed mid-execution)
+//   0x02  stringify+scramble block > 500ms (stepping through payload build)
+//   0x04  pre-stringify assembly > 500ms (debugger paused during device compose)
+// The sum goes into payload.tamper_bits; 0 means "no timing anomaly seen."
+let tamperBits = 0;
+let tEntry = __api_get(0x70);
+
 // ── 1. Async sigint probe fetches ─────────────────────────────────────
 // These run in parallel at the bridge level; VM executes them sequentially
 // but the bridge makes real fetch() calls. Tokens are opaque strings.
@@ -212,6 +224,11 @@ if (serverPubKey.length > 0) {
   }
   uuidBundle = 0;
 
+  // Checkpoint: time to reach payload assembly. Debugger paused during
+  // device compose or on any earlier async probe inflates this.
+  let tPreStringify = __api_get(0x70);
+  if (tPreStringify - tEntry > 500) { tamperBits = tamperBits + 4; }
+
   // Build payload in bytecode, then serialize via the local walker.
   // pubkey+sig attach as device_identity when both non-empty. Bridge provides
   // only the opaque UUID (0x10) and meta (0x11) — no payload-level JSON
@@ -231,7 +248,27 @@ if (serverPubKey.length > 0) {
       payload.device_identity = { pubkey: devicePubkey, sig: deviceSig };
     }
   }
+
   let payloadJSON = stringify(payload);
+
+  // Checkpoint: stringify block. A debugger stepping through the walker
+  // blows past 500ms; real execution stays under 10ms even for the full
+  // collected payload.
+  let tAfterStringify = __api_get(0x70);
+  if (tAfterStringify - tPreStringify > 500) { tamperBits = tamperBits + 2; }
+  // Total VM runtime check. >30s strongly suggests a breakpoint fired at
+  // some point during execution — real devices finish in ~hundreds of ms.
+  if (tAfterStringify - tEntry > 30000) { tamperBits = tamperBits + 1; }
+
+  // Attach tamper signal to payload. Two-pass: we can't splice the string
+  // in-bytecode (no .substring opcode in the VM), so on the (rare) tamper
+  // path we re-run stringify with tamper_bits added. Acceptable cost —
+  // by definition the debugger is already slowing this session down.
+  if (tamperBits > 0) {
+    payload.tamper_bits = tamperBits;
+    payloadJSON = stringify(payload);
+  }
+
   device = 0;
   devicePubkey = 0;
   deviceSig = 0;
