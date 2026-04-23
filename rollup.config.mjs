@@ -80,12 +80,19 @@ const configs = {
           'src/webrtc/**',
           'src/worker/**',
           'src/integrity.ts',
-          // VM bridge is registration code, not a dispatch loop — safe to
-          // obfuscate. Explicitly NOT including interpreter.ts / decoder.ts /
-          // opcodes.ts / format.ts / vm.ts / module.ts / bytecode-modules.ts:
-          // control-flow flattening the dispatch switch would tank perf,
-          // and bytecode-modules is an opaque XOR-scrambled blob already.
+          // VM files: the dispatch loop + opcode handlers are the single
+          // most valuable target for a reverser, so we accept the CFF perf
+          // hit to flatten them. bytecode-modules.ts is excluded — it's just
+          // a const-string export and obfuscating a giant base64 literal
+          // wastes build time for zero gain.
           'src/vm/bridge.ts',
+          'src/vm/interpreter.ts',
+          'src/vm/decoder.ts',
+          'src/vm/opcodes.ts',
+          'src/vm/format.ts',
+          'src/vm/vm.ts',
+          'src/vm/module.ts',
+          'src/vm/unpack.ts',
         ],
         compact: true,
         controlFlowFlattening: true,
@@ -199,12 +206,19 @@ const configs = {
           'src/webrtc/**',
           'src/worker/**',
           'src/integrity.ts',
-          // VM bridge is registration code, not a dispatch loop — safe to
-          // obfuscate. Explicitly NOT including interpreter.ts / decoder.ts /
-          // opcodes.ts / format.ts / vm.ts / module.ts / bytecode-modules.ts:
-          // control-flow flattening the dispatch switch would tank perf,
-          // and bytecode-modules is an opaque XOR-scrambled blob already.
+          // VM files: the dispatch loop + opcode handlers are the single
+          // most valuable target for a reverser, so we accept the CFF perf
+          // hit to flatten them. bytecode-modules.ts is excluded — it's just
+          // a const-string export and obfuscating a giant base64 literal
+          // wastes build time for zero gain.
           'src/vm/bridge.ts',
+          'src/vm/interpreter.ts',
+          'src/vm/decoder.ts',
+          'src/vm/opcodes.ts',
+          'src/vm/format.ts',
+          'src/vm/vm.ts',
+          'src/vm/module.ts',
+          'src/vm/unpack.ts',
         ],
         compact: true,
         controlFlowFlattening: true,
