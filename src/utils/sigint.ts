@@ -367,7 +367,20 @@ export async function fetchTlsFingerprint(config: SigintConfig): Promise<{
   durationMs: number;
 }> {
   const merged = { ...DEFAULT_CONFIG, ...config };
-  const url = getTlsFingerprintEndpoint(config);
+  // Random per-scan subdomain label breaks Safari's HTTP/2 pool key
+  // (scheme, host, port) so every scan gets a fresh TCP+TLS connection.
+  // Without this, a pooled connection established through a prior network
+  // (e.g. a VPN that was later disconnected) stays bound to the original
+  // egress, so CloudFront stamps a stale viewer-address into the signed
+  // token. Server side accepts `*.<stage>id.<zone>` via wildcard SAN.
+  const label = Array.from(
+    crypto.getRandomValues(new Uint8Array(6)),
+    (b) => b.toString(16).padStart(2, '0'),
+  ).join('');
+  const url = getTlsFingerprintEndpoint(config).replace(
+    /^(https:\/\/)([^/]+)/,
+    (_m, scheme, host) => `${scheme}${label}.${host}`,
+  );
   const start = performance.now();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), merged.timeout);
@@ -375,7 +388,8 @@ export async function fetchTlsFingerprint(config: SigintConfig): Promise<{
   try {
     // `credentials: 'include'` is required so the browser persists the
     // `_fpid` cookie CloudFront sets on this response and sends it back on
-    // subsequent TLS probes. id.argus.pw returns ACAO:<origin> + ACAC:true.
+    // subsequent TLS probes. Cookie scope is `.argus.pw` so it rides any
+    // subdomain of the zone, including the per-scan random labels above.
     const response = await fetch(url, {
       signal: controller.signal,
       credentials: 'include',
