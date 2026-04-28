@@ -32,6 +32,8 @@
     "test:adversarial:soax-ipdc": "npm run build:prod && npx playwright test e2e/adversarial/soax-ipdc.spec.ts --project adversarial",
     "test:adversarial:proxy-evasion": "npm run build:prod && npx playwright test e2e/adversarial/proxy-evasion.spec.ts --project adversarial",
     "test:adversarial:proxy-evasion-dallas": "npm run build:prod && npx playwright test e2e/adversarial/proxy-evasion-dallas.spec.ts --project adversarial",
+    "test:adversarial:proxy-evasion-dallas-udp-webrtc": "npm run build:prod && npx playwright test e2e/adversarial/proxy-evasion-dallas-udp-webrtc.spec.ts --project adversarial",
+    "test:adversarial:proxy-evasion-badbox": "npm run build:prod && npx playwright test e2e/adversarial/proxy-evasion-badbox.spec.ts --project adversarial",
     "test:adversarial:evasion-bd-isp-dallas": "npm run build:prod && npx playwright test e2e/adversarial/evasion-bd-isp-dallas.spec.ts --project adversarial",
     "test:adversarial:tor": "npm run build:prod && npx playwright test e2e/adversarial/tor.spec.ts --project adversarial",
     "start": "node server.js",
