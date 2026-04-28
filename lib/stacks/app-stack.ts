@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { StaticSiteConstruct } from '../constructs/static-site';
+import { SdkRefreshConstruct } from '../constructs/sdk-refresh';
 
 interface AppStackProps extends cdk.StackProps {
   environment: string;
@@ -55,6 +56,18 @@ export class TheStack extends cdk.Stack {
     this.bucketNameOutput = new cdk.CfnOutput(this, 'SiteBucketName', {
       value: site.bucket.bucketName,
       description: 'S3 bucket name of the compiled static site',
+    });
+
+    // Nightly SDK refresh — rebuilds + redeploys the bundle so the embedded
+    // VM-bytecode time-bucket never crosses its ~7-day window. See
+    // SdkRefreshConstruct for full rationale.
+    new SdkRefreshConstruct(this, 'SdkRefresh', {
+      siteBucket: site.bucket,
+      distribution: site.distribution,
+      githubOwner: 'JWally',
+      githubRepo: 'ms-argus-web-integrity',
+      githubConnectionArn:
+        'arn:aws:codeconnections:us-east-1:263318538229:connection/924cf09a-f021-420d-b85b-073544f4eead',
     });
   }
 }
