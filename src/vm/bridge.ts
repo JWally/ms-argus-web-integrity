@@ -153,6 +153,13 @@ export interface ArgusVmContext {
    * payload-builder closure.
    */
   fingerprint: IntegrityResult;
+  /**
+   * Public client id (cpi) issued by ms-argus-platform. When set, the
+   * POST_PAYLOAD bridge call includes `x-argus-cpi: <cpi>` so the server
+   * can partition the resulting integrity record under (cpi, session_id)
+   * rather than the unbound legacy partition.
+   */
+  cpi: string | null;
   /** Raw P-256 server public key (88-char base64) — from h2-probe */
   getServerPubKey: () => string;
   /** Sigint probe endpoints (optional — probes skipped if absent) */
@@ -539,17 +546,23 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       const encrypted = args[0] as Uint8Array;
       const clientPubKeyB64 = args[1] as string;
       try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/octet-stream',
+          'X-Argus-Origin': clientPubKeyB64,
+          'X-Argus-Session': ctx.sessionToken,
+          'X-Argus-V': '2',
+        };
+        // The payload is ECDH-encrypted before this call, so we can't add
+        // cpi to the body. It's a routing concern anyway — the server
+        // partitions on (cpi, session_id) regardless of the encrypted
+        // fingerprint contents.
+        if (ctx.cpi) headers['X-Argus-Cpi'] = ctx.cpi;
         const resp = await fetch(ctx.apiEndpoint, {
           method: 'POST',
           // Send the `_fpid` third-party cookie (scoped to .argus.pw) so
           // the API can verify its sig against the current TLS token.
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/octet-stream',
-            'X-Argus-Origin': clientPubKeyB64,
-            'X-Argus-Session': ctx.sessionToken,
-            'X-Argus-V': '2',
-          },
+          headers,
           body: encrypted.buffer as ArrayBuffer,
         });
         if (!resp.ok) {

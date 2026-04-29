@@ -130,6 +130,7 @@ export async function runArgusVm(
   fingerprint: IntegrityResult,
   apiBase: string,
   sigintConfig?: SigintConfig,
+  cpi?: string | null,
 ): Promise<ArgusVmResult> {
   const fallback: ArgusVmResult = {
     sessionId: '',
@@ -176,6 +177,7 @@ export async function runArgusVm(
       // device object via 0x50-0x62 gets. Identifiers + meta are added by
       // GET_PAYLOAD_JSON which receives the assembled device as its first arg.
       fingerprint,
+      cpi: cpi ?? null,
       getServerPubKey: () => handshake.serverPubKey,
       sigintConfig,
       apiEndpoint: `${apiBase}/v1/integrity-collect`,
@@ -231,6 +233,7 @@ export async function runVmDetection(
 
     const ctx: ArgusVmContext = {
       fingerprint,
+      cpi: null,
       getServerPubKey: () => '', // no server key — skips ECDH + POST in bytecode
       apiEndpoint: '',
       sessionToken: '',
