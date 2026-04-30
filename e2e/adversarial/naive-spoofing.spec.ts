@@ -33,14 +33,19 @@ test.describe('adversarial: naive navigator spoofing', () => {
       )
       .toBeTruthy();
 
-    const result = await page.evaluate(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const argus = (window as any).argus;
-      return (await argus.run({
-        sessionId: `naive-${Date.now()}`,
-        timeoutMs: 30_000,
-      })) as { sessionId: string; argusSessionId: string; durationMs: number };
-    });
+    const cpi = process.env.ARGUS_TEST_CPI;
+    const result = await page.evaluate(
+      async ({ c }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const argus = (window as any).argus;
+        return (await argus.run({
+          sessionId: `naive-${Date.now()}`,
+          timeoutMs: 30_000,
+          cpi: c,
+        })) as { sessionId: string; argusSessionId: string; durationMs: number };
+      },
+      { c: cpi },
+    );
 
     const record = await fetchAdversarialRecord(result.argusSessionId);
     const dev = (record.device ?? {}) as Record<string, unknown>;

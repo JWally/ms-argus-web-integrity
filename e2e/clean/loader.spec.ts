@@ -51,9 +51,10 @@ test.describe('loader end-to-end', () => {
     const merchantSessionId = `pw-${Date.now()}`;
 
     // 2. Trigger the run and capture the result
-    const result = await page.evaluate(async (sid) => {
-      return await (window as any).__runArgus({ sessionId: sid, timeoutMs: 20000 });
-    }, merchantSessionId) as RunResult;
+    const cpi = process.env.ARGUS_TEST_CPI;
+    const result = await page.evaluate(async ({ sid, c }) => {
+      return await (window as any).__runArgus({ sessionId: sid, timeoutMs: 20000, cpi: c });
+    }, { sid: merchantSessionId, c: cpi }) as RunResult;
 
     // 3. Result shape
     expect(result.sessionId).toBe(merchantSessionId);
@@ -170,10 +171,11 @@ test.describe('loader end-to-end', () => {
       .poll(() => page.evaluate(() => typeof (window as any).argus === 'object'))
       .toBeTruthy();
 
-    const outcome = await page.evaluate(async () => {
-      const a = (window as any).argus.run({ sessionId: 'first', timeoutMs: 20000 });
+    const cpi = process.env.ARGUS_TEST_CPI;
+    const outcome = await page.evaluate(async (c) => {
+      const a = (window as any).argus.run({ sessionId: 'first', timeoutMs: 20000, cpi: c });
       // Start second run immediately — should supersede the first.
-      const b = (window as any).argus.run({ sessionId: 'second', timeoutMs: 20000 });
+      const b = (window as any).argus.run({ sessionId: 'second', timeoutMs: 20000, cpi: c });
       const aResult = await a.then(
         (r: unknown) => ({ ok: true, r }),
         (e: Error) => ({ ok: false, error: e.message }),
@@ -183,7 +185,7 @@ test.describe('loader end-to-end', () => {
         (e: Error) => ({ ok: false, error: e.message }),
       );
       return { aResult, bResult };
-    });
+    }, cpi);
 
     expect(outcome.aResult.ok, `first run should reject: ${JSON.stringify(outcome.aResult)}`).toBe(false);
     expect((outcome.aResult as { error: string }).error).toContain('superseded');
