@@ -33,6 +33,14 @@
 interface RunOptions {
   /** Merchant-provided correlation id, round-tripped back on completion. */
   sessionId?: string;
+  /**
+   * Public client id (cpi) issued to the merchant by ms-argus-platform —
+   * shape `argus_cpi_(test|live)_<...>`. When supplied, the iframe sends it
+   * as `x-argus-cpi` on the integrity-collect POST so the server partitions
+   * the resulting record under (cpi, session_id). Omitting it routes to the
+   * shared "unbound" partition (legacy behavior, deprecated).
+   */
+  cpi?: string;
   /** Milliseconds to wait before rejecting the returned Promise. 0 disables. Default 10000. */
   timeoutMs?: number;
 }
@@ -124,6 +132,7 @@ function generateRunId(): string {
 function innerScriptUrl(
   runId: string,
   sessionId: string | null,
+  cpi: string | null,
   opts: { pageUrl: string; referrer: string },
 ): string {
   if (!loaderLocation) {
@@ -136,6 +145,7 @@ function innerScriptUrl(
   const q = url.searchParams;
   q.set('runId', runId);
   if (sessionId) q.set('sessionId', sessionId);
+  if (cpi) q.set('cpi', cpi);
   if (opts.pageUrl) q.set('pageUrl', opts.pageUrl);
   if (opts.referrer) q.set('referrer', opts.referrer);
   return url.toString();
@@ -219,6 +229,7 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
 
   const runId = generateRunId();
   const sessionId = opts.sessionId ?? null;
+  const cpi = typeof opts.cpi === 'string' && opts.cpi.length > 0 ? opts.cpi : null;
   const timeoutMs =
     typeof opts.timeoutMs === 'number' ? opts.timeoutMs : DEFAULT_TIMEOUT_MS;
 
@@ -227,7 +238,7 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
 
   let innerUrl: string;
   try {
-    innerUrl = innerScriptUrl(runId, sessionId, { pageUrl, referrer });
+    innerUrl = innerScriptUrl(runId, sessionId, cpi, { pageUrl, referrer });
   } catch (err) {
     return Promise.reject(err as Error);
   }
@@ -314,9 +325,10 @@ if (win.argus) {
 
   if (loaderScript?.hasAttribute('data-auto-run')) {
     const sessionId = loaderScript.getAttribute('data-session-id') ?? undefined;
+    const cpi = loaderScript.getAttribute('data-cpi') ?? undefined;
     const timeoutAttr = loaderScript.getAttribute('data-timeout-ms');
     const timeoutMs = timeoutAttr ? parseInt(timeoutAttr, 10) : undefined;
-    run({ sessionId, timeoutMs }).catch((err) => {
+    run({ sessionId, cpi, timeoutMs }).catch((err) => {
       console.error('[argus-loader] auto-run failed:', err);
     });
   }

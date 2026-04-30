@@ -68,6 +68,10 @@ async function main(): Promise<void> {
 
   const runId = SCRIPT_PARAMS.get('runId') ?? '';
   const sessionId = SCRIPT_PARAMS.get('sessionId');
+  // Public client-id forwarded by the loader. Sent as `x-argus-cpi` on the
+  // ECDH POST so the server can partition the integrity record under
+  // (cpi, session_id). Optional during the migration to dual-key auth.
+  const cpi = SCRIPT_PARAMS.get('cpi');
   if (!runId) {
     throw new Error('argus-iframe: missing runId (script src missing query params?)');
   }
@@ -81,7 +85,7 @@ async function main(): Promise<void> {
 
   try {
     const fingerprint = await collectIntegrity();
-    const vm = await runArgusVm(fingerprint, API_BASE, SIGINT_CONFIG);
+    const vm = await runArgusVm(fingerprint, API_BASE, SIGINT_CONFIG, cpi);
 
     // An empty vm.sessionId means submission failed somewhere in the VM
     // path — ECDH POST returned non-2xx or threw, prefetch failed,
