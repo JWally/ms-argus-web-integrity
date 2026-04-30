@@ -53,17 +53,18 @@ export async function runIntegrityPuppeteer(
   const merchantSessionId = opts.sessionId ?? `bot-${Date.now()}`;
   const timeoutMs = opts.timeoutMs ?? 30_000;
 
+  const cpi = process.env.ARGUS_TEST_CPI;
   const result = await page.evaluate(
-    async ({ sid, to }) => {
+    async ({ sid, to, c }) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const argus = (window as any).argus;
-      return (await argus.run({ sessionId: sid, timeoutMs: to })) as {
+      return (await argus.run({ sessionId: sid, timeoutMs: to, cpi: c })) as {
         sessionId: string;
         argusSessionId: string;
         durationMs: number;
       };
     },
-    { sid: merchantSessionId, to: timeoutMs },
+    { sid: merchantSessionId, to: timeoutMs, c: cpi },
   );
 
   return result;
