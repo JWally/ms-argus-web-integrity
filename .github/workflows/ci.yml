@@ -68,24 +68,13 @@ jobs:
       - name: Build prod bundle
         run: npm run build:prod
 
-  e2e-clean:
-    name: E2E (clean Playwright)
-    runs-on: ubuntu-latest
-    needs: [build]
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium firefox webkit
-
-      - name: Run clean E2E (chromium, firefox, webkit)
-        run: npm run test:e2e
+  # NOTE: Playwright e2e is intentionally NOT in this workflow yet.
+  # The "clean" specs (e2e/clean/loader.spec.ts) require a CPI to
+  # auth against the live argus API and AWS creds to read DDB for
+  # the post-run record assertion — they're not localhost-only despite
+  # the name. To enable, add an `e2e` workflow that:
+  #   - takes ARGUS_TEST_CPI from secrets
+  #   - assumes a read-only AWS role via OIDC
+  #   - runs `npm run test:e2e`
+  # The adversarial specs depend on live SOAX/Bright Data/Tor and
+  # should stay manual/nightly only.
