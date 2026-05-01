@@ -66,7 +66,6 @@ export async function executeAsync(
   return runAsync(vm);
 }
 
- 
 type R = any;
 
 function run(vm: MiniVM): ExecutionResult {
@@ -151,7 +150,6 @@ async function runAsync(vm: MiniVM): Promise<ExecutionResult> {
   return { value: reg[0], instructionsExecuted: ic };
 }
 
- 
 function dispatch(
   vm: MiniVM,
   opcode: number,
@@ -482,7 +480,6 @@ function dispatch(
   }
 }
 
- 
 async function dispatchAsync(
   vm: MiniVM,
   opcode: number,

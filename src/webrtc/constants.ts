@@ -2,9 +2,7 @@
  * WebRTC constants.
  */
 
-export const DEFAULT_STUN_SERVERS = [
-  'stun:dev-jw-stun.argus.pw:3478',
-];
+export const DEFAULT_STUN_SERVERS = ['stun:dev-jw-stun.argus.pw:3478'];
 
 let customStunServers: string[] | null = null;
 

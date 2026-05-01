@@ -88,13 +88,22 @@ export async function collectIntegrity(): Promise<IntegrityResult> {
     workerScopePromise,
   ]);
 
-  const bestScope = (workerScope?.scopes?.[workerScope.best as 'shared' | 'web'] ?? {}) as Record<string, unknown>;
-  const mainScope = (workerScope?.scopes?.main ?? {}) as Record<string, unknown>;
+  const bestScope = (workerScope?.scopes?.[
+    workerScope.best as 'shared' | 'web'
+  ] ?? {}) as Record<string, unknown>;
+  const mainScope = (workerScope?.scopes?.main ?? {}) as Record<
+    string,
+    unknown
+  >;
 
   // Build headless detection inputs with WebGL data for hasSoftwareRenderer/hasBadWebGL
   const headlessInputs: HeadlessDetectionInputs = {
     webgl: mainScope.webglRenderer
-      ? { parameters: { UNMASKED_RENDERER_WEBGL: mainScope.webglRenderer as string } }
+      ? {
+          parameters: {
+            UNMASKED_RENDERER_WEBGL: mainScope.webglRenderer as string,
+          },
+        }
       : undefined,
     workerScope: bestScope.userAgent
       ? {

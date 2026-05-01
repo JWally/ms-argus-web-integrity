@@ -59,7 +59,6 @@ describe('sigint URL builders', () => {
     const url = getH2ProbeEndpoint(config);
     expect(url).toBe('https://dev-jw-h2.argus.pw/');
   });
-
 });
 
 describe('parseSigintConfigFromUrl', () => {
@@ -137,12 +136,10 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -165,12 +162,10 @@ describe('helper functions', () => {
         },
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: 100,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -205,12 +200,10 @@ describe('helper functions', () => {
         },
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: 100,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -227,12 +220,10 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -255,12 +246,10 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -283,12 +272,10 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -305,12 +292,10 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -333,12 +318,10 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: 50,
           tcpProbeMs: null,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -355,12 +338,10 @@ describe('helper functions', () => {
         tcpProbe: null,
         h2Probe: null,
 
-
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: null,
-
 
           totalMs: 100,
         },
@@ -386,12 +367,10 @@ describe('helper functions', () => {
           domain: 'test.io',
         },
 
-
         timing: {
           tlsFingerprintMs: null,
           tcpProbeMs: null,
           h2ProbeMs: 50,
-
 
           totalMs: 100,
         },
@@ -417,8 +396,6 @@ describe('collectSigintData', () => {
       enableCookie: false,
       enableTcpProbe: false,
       enableH2Probe: false,
-
-
     };
 
     const result = await collectSigintData(config);
@@ -438,7 +415,6 @@ describe('collectSigintData', () => {
       enableCookie: true,
       enableTcpProbe: true,
       enableH2Probe: true,
-
 
       timeout: 1000,
     };
@@ -474,7 +450,6 @@ describe('collectSigintData', () => {
       enableCookie: true,
       enableTcpProbe: false,
       enableH2Probe: false,
-
 
       timeout: 1000,
     };
@@ -534,7 +509,6 @@ describe('collectSigintData', () => {
       enableCookie: true,
       enableTcpProbe: true,
       enableH2Probe: true,
-
 
       timeout: 1000,
     };

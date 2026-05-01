@@ -54,9 +54,11 @@ describe('argus-loader', () => {
     installFakeScript('http://cdn.example.com/argus-loader.js');
     await import('./index');
 
-    const argus = (window as unknown as {
-      argus: { run: unknown; destroy: unknown; _state: unknown };
-    }).argus;
+    const argus = (
+      window as unknown as {
+        argus: { run: unknown; destroy: unknown; _state: unknown };
+      }
+    ).argus;
     expect(typeof argus.run).toBe('function');
     expect(typeof argus.destroy).toBe('function');
     expect(argus._state).toEqual({ running: false, lastRunId: null });
@@ -69,9 +71,11 @@ describe('argus-loader', () => {
     const iframes = document.querySelectorAll('iframe[data-argus-loader]');
     expect(iframes.length).toBe(0);
 
-    const state = (window as unknown as {
-      argus: { _state: { running: boolean; lastRunId: string | null } };
-    }).argus._state;
+    const state = (
+      window as unknown as {
+        argus: { _state: { running: boolean; lastRunId: string | null } };
+      }
+    ).argus._state;
     expect(state.running).toBe(false);
     expect(state.lastRunId).toBeNull();
   });

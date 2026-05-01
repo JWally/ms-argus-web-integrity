@@ -89,10 +89,18 @@ export interface WorkerScopeData {
   product?: string;
   onLine?: boolean;
   globalPrivacyControl?: boolean;
-  connection?: { downlink?: number; effectiveType?: string; rtt?: number; saveData?: boolean } | null;
+  connection?: {
+    downlink?: number;
+    effectiveType?: string;
+    rtt?: number;
+    saveData?: boolean;
+  } | null;
   permissions?: Record<string, string> | null;
   storageEstimate?: { quota?: number; usage?: number } | null;
-  mediaCapabilities?: Record<string, { supported: boolean; smooth: boolean; powerEfficient: boolean }> | null;
+  mediaCapabilities?: Record<
+    string,
+    { supported: boolean; smooth: boolean; powerEfficient: boolean }
+  > | null;
   // Enriched fields (added post-collection)
   system?: string;
   device?: string;

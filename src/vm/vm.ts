@@ -33,7 +33,6 @@ export const VMStatus = {
   ERROR: 4,
 } as const;
 
- 
 export type VMStatus = (typeof VMStatus)[keyof typeof VMStatus];
 
 export class MiniVM {

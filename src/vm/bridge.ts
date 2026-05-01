@@ -261,7 +261,8 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
           /* crypto unavailable in iframe */
         }
         try {
-          const win2Perf = (win2 as unknown as { performance: Performance }).performance;
+          const win2Perf = (win2 as unknown as { performance: Performance })
+            .performance;
           iframePerfNow = win2Perf.now.bind(win2Perf);
         } catch {
           /* performance unavailable in iframe */
@@ -277,7 +278,8 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   } catch {
     /* iframe creation failed */
   }
-  const safeStringify: typeof JSON.stringify = iframeStringify ?? JSON.stringify;
+  const safeStringify: typeof JSON.stringify =
+    iframeStringify ?? JSON.stringify;
 
   // Pristine monotonic timer for anti-debug timing checks in bytecode.
   // Prefer the nested iframe's performance.now (captured before any page
@@ -317,25 +319,27 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // ctx.getPayload composition order — important for keeping the
   // assembled JSON byte-stable across the refactor.
   const fp = ctx.fingerprint;
-  bridge.register(BridgeApi.SLICE_CSS,             { get: () => fp.css });
-  bridge.register(BridgeApi.SLICE_ENGINE,          { get: () => fp.engine });
-  bridge.register(BridgeApi.SLICE_MATH,            { get: () => fp.math });
-  bridge.register(BridgeApi.SLICE_HEADLESS,        { get: () => fp.headless });
-  bridge.register(BridgeApi.SLICE_LIES,            { get: () => fp.lies });
-  bridge.register(BridgeApi.SLICE_TRASH,           { get: () => fp.trash });
-  bridge.register(BridgeApi.SLICE_SHIELDING,       { get: () => fp.shielding });
-  bridge.register(BridgeApi.SLICE_INCOGNITO,       { get: () => fp.incognito });
-  bridge.register(BridgeApi.SLICE_INTL,            { get: () => fp.intl });
-  bridge.register(BridgeApi.SLICE_NAVIGATOR,       { get: () => fp.navigator });
-  bridge.register(BridgeApi.SLICE_SCREEN,          { get: () => fp.screen });
-  bridge.register(BridgeApi.SLICE_STATUS,          { get: () => fp.status });
-  bridge.register(BridgeApi.SLICE_TIMEZONE,        { get: () => fp.timezone });
-  bridge.register(BridgeApi.SLICE_TIMING,          { get: () => fp.timing });
-  bridge.register(BridgeApi.SLICE_CSSMEDIA,        { get: () => fp.cssMedia });
-  bridge.register(BridgeApi.SLICE_WEBRTC,          { get: () => fp.webrtc });
-  bridge.register(BridgeApi.SLICE_WINDOW_PREFIXES, { get: () => fp.windowPrefixes });
-  bridge.register(BridgeApi.SLICE_WORKER_SCOPE,    { get: () => fp.workerScope });
-  bridge.register(BridgeApi.SLICE_ERRORS,          { get: () => fp.errors });
+  bridge.register(BridgeApi.SLICE_CSS, { get: () => fp.css });
+  bridge.register(BridgeApi.SLICE_ENGINE, { get: () => fp.engine });
+  bridge.register(BridgeApi.SLICE_MATH, { get: () => fp.math });
+  bridge.register(BridgeApi.SLICE_HEADLESS, { get: () => fp.headless });
+  bridge.register(BridgeApi.SLICE_LIES, { get: () => fp.lies });
+  bridge.register(BridgeApi.SLICE_TRASH, { get: () => fp.trash });
+  bridge.register(BridgeApi.SLICE_SHIELDING, { get: () => fp.shielding });
+  bridge.register(BridgeApi.SLICE_INCOGNITO, { get: () => fp.incognito });
+  bridge.register(BridgeApi.SLICE_INTL, { get: () => fp.intl });
+  bridge.register(BridgeApi.SLICE_NAVIGATOR, { get: () => fp.navigator });
+  bridge.register(BridgeApi.SLICE_SCREEN, { get: () => fp.screen });
+  bridge.register(BridgeApi.SLICE_STATUS, { get: () => fp.status });
+  bridge.register(BridgeApi.SLICE_TIMEZONE, { get: () => fp.timezone });
+  bridge.register(BridgeApi.SLICE_TIMING, { get: () => fp.timing });
+  bridge.register(BridgeApi.SLICE_CSSMEDIA, { get: () => fp.cssMedia });
+  bridge.register(BridgeApi.SLICE_WEBRTC, { get: () => fp.webrtc });
+  bridge.register(BridgeApi.SLICE_WINDOW_PREFIXES, {
+    get: () => fp.windowPrefixes,
+  });
+  bridge.register(BridgeApi.SLICE_WORKER_SCOPE, { get: () => fp.workerScope });
+  bridge.register(BridgeApi.SLICE_ERRORS, { get: () => fp.errors });
 
   // 0x14: get server public key
   bridge.register(BridgeApi.GET_SERVER_PUB_KEY, {
@@ -566,7 +570,9 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
           body: encrypted.buffer as ArrayBuffer,
         });
         if (!resp.ok) {
-          ctx.onSubmissionError?.(`http_${resp.status}_${resp.statusText || 'error'}`);
+          ctx.onSubmissionError?.(
+            `http_${resp.status}_${resp.statusText || 'error'}`,
+          );
           return '';
         }
         const json = (await resp.json()) as Record<string, unknown>;

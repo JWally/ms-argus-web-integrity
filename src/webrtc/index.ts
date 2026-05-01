@@ -13,7 +13,11 @@
  * Codec data is intentionally excluded — headless Chrome has identical codecs to real Chrome.
  */
 
-import { getRtcConfig, KNOWN_FOUNDATIONS, ICE_GATHER_TIMEOUT } from './constants';
+import {
+  getRtcConfig,
+  KNOWN_FOUNDATIONS,
+  ICE_GATHER_TIMEOUT,
+} from './constants';
 import type {
   WebRTCFingerprint,
   ParsedICECandidate,
@@ -52,7 +56,9 @@ function parseICECandidate(candidateStr: string): ParsedICECandidate | null {
   };
 }
 
-function summarizeICECandidates(candidates: ParsedICECandidate[]): ICECandidateSummary {
+function summarizeICECandidates(
+  candidates: ParsedICECandidate[],
+): ICECandidateSummary {
   const typeCount: Record<string, number> = {};
   const publicIPs: string[] = [];
   const privateIPs: string[] = [];
@@ -109,9 +115,10 @@ export default async function getWebRTCData(): Promise<WebRTCFingerprint | null>
     const connection = new RTCPeerConnection(getRtcConfig());
     connection.createDataChannel('');
 
-    const offer = await connection.createOffer(
-      { offerToReceiveAudio: 1, offerToReceiveVideo: 1 } as unknown as RTCOfferOptions,
-    );
+    const offer = await connection.createOffer({
+      offerToReceiveAudio: 1,
+      offerToReceiveVideo: 1,
+    } as unknown as RTCOfferOptions);
     connection.setLocalDescription(offer);
     const sdp = offer.sdp || '';
 

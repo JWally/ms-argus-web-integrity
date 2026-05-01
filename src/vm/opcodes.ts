@@ -56,15 +56,15 @@ export const Op = {
   ARR_NEW: 0x61,
   ARR_PUSH: 0x62,
   ARR_GET: 0x63,
-  OBJ_KEYS: 0x64,  // dst = Object.keys(src1) — own enumerable string keys
+  OBJ_KEYS: 0x64, // dst = Object.keys(src1) — own enumerable string keys
   ARR_LEN: 0x65,
-  IS_ARRAY: 0x66,  // dst = Array.isArray(src1)
+  IS_ARRAY: 0x66, // dst = Array.isArray(src1)
 
   // === String (0x70-0x7F) ===
   STR_CONCAT: 0x70,
   STR_INCLUDES: 0x71,
-  CHAR_CODE_AT: 0x72,    // dst = str.charCodeAt(index)
-  FROM_CHAR_CODE: 0x73,  // dst = String.fromCharCode(code)
+  CHAR_CODE_AT: 0x72, // dst = str.charCodeAt(index)
+  FROM_CHAR_CODE: 0x73, // dst = String.fromCharCode(code)
   TO_STRING: 0x75,
 
   // === Utility (0x80-0x8F) ===

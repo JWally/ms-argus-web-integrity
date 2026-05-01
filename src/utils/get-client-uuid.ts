@@ -162,7 +162,10 @@ function writeToCookie(value: string): void {
 function newUuid(): string {
   // crypto.randomUUID is a secure-context API shipped in all modern
   // browsers since 2021. Fall back to a manual v4 on older UAs.
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID();
   }
   const bytes = new Uint8Array(16);

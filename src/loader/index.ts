@@ -93,7 +93,8 @@ const state: LoaderState = { running: false, lastRunId: null };
 
 // Captured synchronously at parse time — document.currentScript is only
 // valid during synchronous execution of the script tag.
-const loaderScript = (document.currentScript as HTMLScriptElement | null) ?? null;
+const loaderScript =
+  (document.currentScript as HTMLScriptElement | null) ?? null;
 const loaderSrc = loaderScript?.src ?? '';
 const loaderLocation = (() => {
   if (!loaderSrc) return null;
@@ -229,7 +230,8 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
 
   const runId = generateRunId();
   const sessionId = opts.sessionId ?? null;
-  const cpi = typeof opts.cpi === 'string' && opts.cpi.length > 0 ? opts.cpi : null;
+  const cpi =
+    typeof opts.cpi === 'string' && opts.cpi.length > 0 ? opts.cpi : null;
   const timeoutMs =
     typeof opts.timeoutMs === 'number' ? opts.timeoutMs : DEFAULT_TIMEOUT_MS;
 
@@ -266,7 +268,10 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
 
     const timeoutHandle =
       timeoutMs > 0
-        ? setTimeout(() => rejectPending(`timeout after ${timeoutMs}ms`), timeoutMs)
+        ? setTimeout(
+            () => rejectPending(`timeout after ${timeoutMs}ms`),
+            timeoutMs,
+          )
         : null;
 
     window.addEventListener('message', messageHandler);
@@ -319,7 +324,9 @@ const win = window as unknown as Record<string, unknown>;
 if (win.argus) {
   // Double-load. Don't overwrite — the first loader may already have in-flight
   // runs with message listeners bound to its closure. Fail loud.
-  console.error('[argus-loader] window.argus already defined — double-load detected');
+  console.error(
+    '[argus-loader] window.argus already defined — double-load detected',
+  );
 } else {
   win.argus = argus;
 

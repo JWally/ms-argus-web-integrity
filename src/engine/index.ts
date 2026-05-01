@@ -211,7 +211,10 @@ function detectLayoutEngine(): LayoutEngine {
     if (typeof div.style.MozBoxSizing !== 'undefined') {
       return 'Gecko';
     }
-    if (typeof CSS !== 'undefined' && CSS.supports?.('-moz-appearance', 'none')) {
+    if (
+      typeof CSS !== 'undefined' &&
+      CSS.supports?.('-moz-appearance', 'none')
+    ) {
       return 'Gecko';
     }
 

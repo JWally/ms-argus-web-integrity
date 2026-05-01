@@ -22,7 +22,9 @@ export interface WindowPrefixFingerprint {
   total: number;
 }
 
-export default function getWindowPrefixes(): WindowPrefixFingerprint | undefined {
+export default function getWindowPrefixes():
+  | WindowPrefixFingerprint
+  | undefined {
   try {
     const timer = createTimer();
     timer.start();
@@ -38,7 +40,11 @@ export default function getWindowPrefixes(): WindowPrefixFingerprint | undefined
       else if (/^[Aa]pple/.test(k)) apple++;
     }
 
-    logTestResult({ time: timer.stop(), test: 'window prefixes', passed: true });
+    logTestResult({
+      time: timer.stop(),
+      test: 'window prefixes',
+      passed: true,
+    });
     return { moz, webkit, apple, total: keys.length };
   } catch (error) {
     logTestResult({ test: 'window prefixes', passed: false });

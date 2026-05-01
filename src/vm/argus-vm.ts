@@ -146,21 +146,36 @@ export async function runArgusVm(
 
   if (prefetched) {
     const result = await prefetched;
-    if (!result) { console.warn('[argus-vm] prefetch slot resolved to null'); return fallback; }
+    if (!result) {
+      console.warn('[argus-vm] prefetch slot resolved to null');
+      return fallback;
+    }
     modules = result.modules;
     handshake = result.handshake;
-    console.log('[argus-vm] prefetch consumed, pubkey length:', handshake.serverPubKey.length);
+    console.log(
+      '[argus-vm] prefetch consumed, pubkey length:',
+      handshake.serverPubKey.length,
+    );
   } else {
     // No prefetch slot — start fresh. Without sigintConfig there's no way
     // to obtain the server ECDH pubkey, so fail fast.
-    if (!sigintConfig) { console.warn('[argus-vm] no prefetch slot and no sigintConfig'); return fallback; }
+    if (!sigintConfig) {
+      console.warn('[argus-vm] no prefetch slot and no sigintConfig');
+      return fallback;
+    }
     console.log('[argus-vm] starting fresh prefetch');
     const result = await prefetchArgusVm(sigintConfig);
     _prefetchSlot = null;
-    if (!result) { console.warn('[argus-vm] fresh prefetch returned null'); return fallback; }
+    if (!result) {
+      console.warn('[argus-vm] fresh prefetch returned null');
+      return fallback;
+    }
     modules = result.modules;
     handshake = result.handshake;
-    console.log('[argus-vm] fresh prefetch done, pubkey length:', handshake.serverPubKey.length);
+    console.log(
+      '[argus-vm] fresh prefetch done, pubkey length:',
+      handshake.serverPubKey.length,
+    );
   }
 
   try {

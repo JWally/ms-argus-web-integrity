@@ -35,7 +35,14 @@ const ENGINE_TESTS: [string, number[]][] = [
  * Functions to check for tampering by calling twice with the same input.
  * If results differ, a fingerprint randomizer is active.
  */
-const TAMPER_CHECK_FUNCTIONS = ['asinh', 'expm1', 'sinh', 'cosh', 'atanh', 'cbrt'] as const;
+const TAMPER_CHECK_FUNCTIONS = [
+  'asinh',
+  'expm1',
+  'sinh',
+  'cosh',
+  'atanh',
+  'cbrt',
+] as const;
 
 function checkTampering(): boolean {
   for (const fn of TAMPER_CHECK_FUNCTIONS) {
@@ -58,7 +65,9 @@ function runTests(): number[] {
   });
 }
 
-export default function getMathPrecision(): MathPrecisionFingerprint | undefined {
+export default function getMathPrecision():
+  | MathPrecisionFingerprint
+  | undefined {
   try {
     const timer = createTimer();
     timer.start();

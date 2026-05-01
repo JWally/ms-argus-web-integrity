@@ -98,7 +98,7 @@ const caniuse = (
   }
   let i;
   const len = objChainList.length;
-   
+
   let chain: any = api;
   try {
     for (i = 0; i < len; i++) {
