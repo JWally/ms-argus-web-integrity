@@ -76,18 +76,20 @@ test.describe('adversarial: SOAX mobile proxy', () => {
         )
         .toBeTruthy();
 
-      const result = await page.evaluate(async () => {
+      const cpi = process.env.ARGUS_TEST_CPI;
+      const result = await page.evaluate(async (c) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const argus = (window as any).argus;
         return (await argus.run({
           sessionId: `soax-mobile-${Date.now()}`,
           timeoutMs: 60_000,
+          cpi: c,
         })) as {
           sessionId: string;
           argusSessionId: string;
           durationMs: number;
         };
-      });
+      }, cpi);
 
       const record = await fetchAdversarialRecord(result.argusSessionId);
       const dev = (record.device ?? {}) as Record<string, unknown>;
