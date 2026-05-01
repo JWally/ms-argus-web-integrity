@@ -31,7 +31,11 @@ describe('unpack', () => {
 
   it('round-trips bytecode at the build bucket', async () => {
     const src = mkBytecode();
-    const blob = await pack(src, { realKey: mkKey(1), salt: mkSalt(2), bucket });
+    const blob = await pack(src, {
+      realKey: mkKey(1),
+      salt: mkSalt(2),
+      bucket,
+    });
     const b64 = Buffer.from(blob).toString('base64');
     const out = await unpack(b64, now);
     expect(out).not.toBeNull();
@@ -40,7 +44,11 @@ describe('unpack', () => {
 
   it('accepts clients within ±SKEW buckets', async () => {
     const src = mkBytecode();
-    const blob = await pack(src, { realKey: mkKey(3), salt: mkSalt(4), bucket });
+    const blob = await pack(src, {
+      realKey: mkKey(3),
+      salt: mkSalt(4),
+      bucket,
+    });
     const b64 = Buffer.from(blob).toString('base64');
     for (let d = -SKEW; d <= SKEW; d++) {
       const out = await unpack(b64, now + d * BUCKET_MS);
@@ -50,7 +58,11 @@ describe('unpack', () => {
 
   it('rejects clients outside ±SKEW buckets', async () => {
     const src = mkBytecode();
-    const blob = await pack(src, { realKey: mkKey(5), salt: mkSalt(6), bucket });
+    const blob = await pack(src, {
+      realKey: mkKey(5),
+      salt: mkSalt(6),
+      bucket,
+    });
     const b64 = Buffer.from(blob).toString('base64');
     expect(await unpack(b64, now + (SKEW + 1) * BUCKET_MS)).toBeNull();
     expect(await unpack(b64, now - (SKEW + 1) * BUCKET_MS)).toBeNull();
@@ -58,7 +70,11 @@ describe('unpack', () => {
 
   it('rejects a tampered blob (flipped salt byte changes derived key)', async () => {
     const src = mkBytecode();
-    const blob = await pack(src, { realKey: mkKey(7), salt: mkSalt(8), bucket });
+    const blob = await pack(src, {
+      realKey: mkKey(7),
+      salt: mkSalt(8),
+      bucket,
+    });
     // Flip a salt byte: embed_mask changes → real_key changes → magic fails
     blob[0] ^= 0xff;
     const b64 = Buffer.from(blob).toString('base64');
@@ -73,7 +89,11 @@ describe('unpack', () => {
     // which lands on magic byte 0 — not a byte at an offset that doesn't
     // intersect the magic range.
     const src = mkBytecode();
-    const blob = await pack(src, { realKey: mkKey(9), salt: mkSalt(10), bucket });
+    const blob = await pack(src, {
+      realKey: mkKey(9),
+      salt: mkSalt(10),
+      bucket,
+    });
     blob[blob.length - KEY_LEN] ^= 0xff;
     const b64 = Buffer.from(blob).toString('base64');
     const out = await unpack(b64, now);
@@ -82,7 +102,11 @@ describe('unpack', () => {
 
   it('rejects a tampered blob (flipped magic byte of scrambled bytecode)', async () => {
     const src = mkBytecode();
-    const blob = await pack(src, { realKey: mkKey(11), salt: mkSalt(12), bucket });
+    const blob = await pack(src, {
+      realKey: mkKey(11),
+      salt: mkSalt(12),
+      bucket,
+    });
     // The scrambled bytecode starts at offset SALT_LEN (8); first 4 bytes
     // carry the magic. Flipping one of those bytes makes magic check fail.
     blob[SALT_LEN] ^= 0xff;

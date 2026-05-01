@@ -95,25 +95,37 @@ describe('ICE candidate parsing pattern', () => {
     /candidate:(\S+)\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\d+)\s+typ\s+(\S+)/i;
 
   it('parses host candidate', () => {
-    const m = 'candidate:842163049 1 udp 1677729535 192.168.1.100 54321 typ host generation 0'.match(candidatePattern);
+    const m =
+      'candidate:842163049 1 udp 1677729535 192.168.1.100 54321 typ host generation 0'.match(
+        candidatePattern,
+      );
     expect(m![1]).toBe('842163049');
     expect(m![4]).toBe('192.168.1.100');
     expect(m![6]).toBe('host');
   });
 
   it('parses srflx (STUN) candidate', () => {
-    const m = 'candidate:123456 1 udp 100401151 203.0.113.5 8080 typ srflx raddr 192.168.1.100 rport 54321'.match(candidatePattern);
+    const m =
+      'candidate:123456 1 udp 100401151 203.0.113.5 8080 typ srflx raddr 192.168.1.100 rport 54321'.match(
+        candidatePattern,
+      );
     expect(m![4]).toBe('203.0.113.5');
     expect(m![6]).toBe('srflx');
   });
 
   it('parses relay candidate', () => {
-    const m = 'candidate:789 1 udp 50331903 198.51.100.3 3478 typ relay raddr 203.0.113.5 rport 8080'.match(candidatePattern);
+    const m =
+      'candidate:789 1 udp 50331903 198.51.100.3 3478 typ relay raddr 203.0.113.5 rport 8080'.match(
+        candidatePattern,
+      );
     expect(m![6]).toBe('relay');
   });
 
   it('parses mDNS obfuscated candidate', () => {
-    const m = 'candidate:842163049 1 udp 1677729535 abc123def.local 54321 typ host'.match(candidatePattern);
+    const m =
+      'candidate:842163049 1 udp 1677729535 abc123def.local 54321 typ host'.match(
+        candidatePattern,
+      );
     expect(m![4]).toBe('abc123def.local');
   });
 });

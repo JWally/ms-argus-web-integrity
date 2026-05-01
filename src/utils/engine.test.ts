@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { ENGINE_IDENTIFIER, IS_BLINK, IS_GECKO, IS_WEBKIT, JS_ENGINE } from './engine';
+import {
+  ENGINE_IDENTIFIER,
+  IS_BLINK,
+  IS_GECKO,
+  IS_WEBKIT,
+  JS_ENGINE,
+} from './engine';
 import { EngineId } from '../constants/engine';
 
 describe('engine detection', () => {

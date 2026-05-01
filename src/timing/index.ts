@@ -65,13 +65,15 @@ function getNavigationTiming(): {
     const entries = performance.getEntriesByType(
       'navigation',
     ) as PerformanceNavigationTiming[];
-    if (!entries.length) return { tcpConnect: 0, tlsHandshake: 0, navigationProtocol: '' };
+    if (!entries.length)
+      return { tcpConnect: 0, tlsHandshake: 0, navigationProtocol: '' };
     const nav = entries[0];
     return {
       tcpConnect: Math.round((nav.connectEnd - nav.connectStart) * 1000) / 1000,
       tlsHandshake:
         nav.secureConnectionStart > 0
-          ? Math.round((nav.connectEnd - nav.secureConnectionStart) * 1000) / 1000
+          ? Math.round((nav.connectEnd - nav.secureConnectionStart) * 1000) /
+            1000
           : 0,
       navigationProtocol: nav.nextHopProtocol ?? '',
     };
@@ -108,9 +110,10 @@ export default async function getTimingFingerprint(): Promise<
 
     await new Promise((r) => setTimeout(r, 50));
 
-    const drift = Math.round(
-      Math.abs(performance.now() - t0perf - (Date.now() - t0date)) * 1000,
-    ) / 1000;
+    const drift =
+      Math.round(
+        Math.abs(performance.now() - t0perf - (Date.now() - t0date)) * 1000,
+      ) / 1000;
 
     const { tcpConnect, tlsHandshake, navigationProtocol } =
       getNavigationTiming();

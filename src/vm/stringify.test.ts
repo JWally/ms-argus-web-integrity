@@ -50,7 +50,6 @@ function jsonEscape(s: string): string {
   return out + '"';
 }
 
- 
 function stringify(v: any): string {
   if (v === null) return 'null';
   const t = typeof v;
@@ -98,7 +97,9 @@ interface Case {
   skipRoundTrip?: boolean;
 }
 
-const ctrlChars = Array.from({ length: 32 }, (_, i) => String.fromCharCode(i)).join('');
+const ctrlChars = Array.from({ length: 32 }, (_, i) =>
+  String.fromCharCode(i),
+).join('');
 
 const deepArray: unknown = (() => {
   let cur: unknown = 42;
@@ -116,7 +117,11 @@ const realPayload = {
   identifiers: { session_id: '11111111-2222-3333-4444-555555555555' },
   device: {
     css: { browser: 'chrome', features: [1, 2, 3] },
-    navigator: { userAgent: 'Mozilla/5.0', hardwareConcurrency: 8, emoji: '🖥️' },
+    navigator: {
+      userAgent: 'Mozilla/5.0',
+      hardwareConcurrency: 8,
+      emoji: '🖥️',
+    },
     timing: [0.1, 0.2, 0.3],
     lies: {},
     nested: { deep: { value: null, arr: [1, null, undefined, 'x'] } },
@@ -145,7 +150,11 @@ const cases: Case[] = [
   { name: 'float with repeating decimals', input: 0.1 + 0.2 }, // 0.30000000000000004
   { name: 'NaN (top-level)', input: NaN, skipRoundTrip: true },
   { name: 'Infinity (top-level)', input: Infinity, skipRoundTrip: true },
-  { name: 'negative Infinity (top-level)', input: -Infinity, skipRoundTrip: true },
+  {
+    name: 'negative Infinity (top-level)',
+    input: -Infinity,
+    skipRoundTrip: true,
+  },
   { name: 'undefined (top-level)', input: undefined, skipRoundTrip: true },
 
   // Strings
@@ -161,7 +170,10 @@ const cases: Case[] = [
   { name: 'string with formfeed', input: 'a\fb' },
   { name: 'string with all control chars 0x00..0x1F', input: ctrlChars },
   { name: 'string with DEL 0x7F (not escaped)', input: '\x7f' },
-  { name: 'string with forward slash (not escaped)', input: 'https://example.com/a/b' },
+  {
+    name: 'string with forward slash (not escaped)',
+    input: 'https://example.com/a/b',
+  },
   { name: 'Chinese characters', input: '你好世界' },
   { name: 'Japanese characters', input: 'こんにちは' },
   { name: 'Arabic (RTL)', input: 'مرحبا بالعالم' },
@@ -180,35 +192,63 @@ const cases: Case[] = [
   { name: 'array with one int', input: [1] },
   { name: 'array of mixed primitives', input: [1, 'a', true, false, null] },
   { name: 'array with undefined (→ null)', input: [1, undefined, 3] },
-  { name: 'array with NaN/Infinity (→ null)', input: [1, NaN, Infinity, -Infinity, 2] },
+  {
+    name: 'array with NaN/Infinity (→ null)',
+    input: [1, NaN, Infinity, -Infinity, 2],
+  },
   { name: 'nested arrays', input: [[1, 2], [3, 4], [[5]]] },
   { name: 'array of objects', input: [{ a: 1 }, { b: 2 }] },
   { name: 'sparse array (holes → null)', input: [1, , 3] }, // eslint-disable-line no-sparse-arrays
   { name: 'deeply nested array (50 levels)', input: deepArray },
-  { name: 'large array (1000 items)', input: Array.from({ length: 1000 }, (_, i) => i) },
+  {
+    name: 'large array (1000 items)',
+    input: Array.from({ length: 1000 }, (_, i) => i),
+  },
 
   // Objects
   { name: 'empty object', input: {} },
   { name: 'single-key object', input: { a: 1 } },
   { name: 'multi-key object', input: { a: 1, b: 'two', c: true, d: null } },
-  { name: 'object with undefined (key omitted)', input: { a: 1, b: undefined, c: 3 } },
+  {
+    name: 'object with undefined (key omitted)',
+    input: { a: 1, b: undefined, c: 3 },
+  },
   { name: 'object with NaN/Infinity (→ null)', input: { a: NaN, b: Infinity } },
   { name: 'object with empty string key', input: { '': 'empty' } },
   { name: 'object with quote in key', input: { 'a"b': 1 } },
   { name: 'object with backslash in key', input: { 'a\\b': 1 } },
   { name: 'object with newline in key', input: { 'a\nb': 1 } },
   { name: 'object with unicode key', input: { 你好: 'hi', '🔥': 'fire' } },
-  { name: 'object with numeric-looking key', input: { '0': 'z', '1': 'o', '10': 't' } },
+  {
+    name: 'object with numeric-looking key',
+    input: { '0': 'z', '1': 'o', '10': 't' },
+  },
   { name: 'deeply nested object (50 levels)', input: deepObject },
 
   // Combined
   { name: 'real fingerprint payload shape', input: realPayload },
-  { name: 'mixed: array of objects of arrays', input: [{ a: [1, 2, { b: [3, 4] }] }] },
-  { name: 'object containing every type', input: {
-    s: 'str', n: 42, f: 3.14, t: true, fa: false, nu: null,
-    un: undefined, na: NaN, inf: Infinity,
-    arr: [1, 2, 3], obj: { nested: true }, emp: [], emo: {},
-  } },
+  {
+    name: 'mixed: array of objects of arrays',
+    input: [{ a: [1, 2, { b: [3, 4] }] }],
+  },
+  {
+    name: 'object containing every type',
+    input: {
+      s: 'str',
+      n: 42,
+      f: 3.14,
+      t: true,
+      fa: false,
+      nu: null,
+      un: undefined,
+      na: NaN,
+      inf: Infinity,
+      arr: [1, 2, 3],
+      obj: { nested: true },
+      emp: [],
+      emo: {},
+    },
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
@@ -293,7 +333,6 @@ describe('stringify reference impl — byte-level escape correctness', () => {
 
 describe('stringify reference impl — object key behaviour', () => {
   it('preserves insertion order for string keys', () => {
-     
     const obj: any = {};
     obj.z = 1;
     obj.a = 2;
@@ -305,7 +344,7 @@ describe('stringify reference impl — object key behaviour', () => {
   it('numeric-looking keys appear in their enumeration order (integer-like first)', () => {
     // Object.keys orders integer-like keys first (ascending), then others in
     // insertion order. Walker inherits this.
-     
+
     const obj: any = {};
     obj.b = 'b';
     obj['10'] = 'ten';
@@ -432,19 +471,38 @@ describe('bytecode stringify — parity with reference impl', () => {
   // compiler regressions in the bytecode path.
   const sampled = cases.filter((c) => {
     const names = [
-      'null', 'true', 'false', 'zero', 'positive int', 'pi',
-      'scientific large', 'float with repeating decimals',
-      'NaN (top-level)', 'Infinity (top-level)', 'undefined (top-level)',
-      'empty string', 'simple string', 'string with double quote',
-      'string with backslash', 'string with newline',
+      'null',
+      'true',
+      'false',
+      'zero',
+      'positive int',
+      'pi',
+      'scientific large',
+      'float with repeating decimals',
+      'NaN (top-level)',
+      'Infinity (top-level)',
+      'undefined (top-level)',
+      'empty string',
+      'simple string',
+      'string with double quote',
+      'string with backslash',
+      'string with newline',
       'string with all control chars 0x00..0x1F',
-      'Chinese characters', 'emoji (surrogate pairs)',
+      'Chinese characters',
+      'emoji (surrogate pairs)',
       'newline + quote + backslash combo',
-      'empty array', 'array of mixed primitives', 'array with undefined (→ null)',
-      'nested arrays', 'deeply nested array (50 levels)',
-      'empty object', 'multi-key object', 'object with undefined (key omitted)',
-      'object with quote in key', 'object with unicode key',
-      'deeply nested object (50 levels)', 'real fingerprint payload shape',
+      'empty array',
+      'array of mixed primitives',
+      'array with undefined (→ null)',
+      'nested arrays',
+      'deeply nested array (50 levels)',
+      'empty object',
+      'multi-key object',
+      'object with undefined (key omitted)',
+      'object with quote in key',
+      'object with unicode key',
+      'deeply nested object (50 levels)',
+      'real fingerprint payload shape',
       'object containing every type',
     ];
     return names.includes(c.name);

@@ -92,10 +92,15 @@ async function hasBlankUaData(): Promise<boolean> {
     // @ts-expect-error userAgentData may not be typed
     if (navigator.userAgentData?.platform === '') return true;
     // @ts-expect-error userAgentData may not be typed
-    const highEntropy = await navigator.userAgentData.getHighEntropyValues(['platform']);
+    const highEntropy = await navigator.userAgentData.getHighEntropyValues([
+      'platform',
+    ]);
     return highEntropy.platform === '';
   } catch {
-    expectFailure('hasBlankUaData', 'userAgentData.getHighEntropyValues failed');
+    expectFailure(
+      'hasBlankUaData',
+      'userAgentData.getHighEntropyValues failed',
+    );
     return false;
   }
 }
@@ -284,14 +289,14 @@ const BOT_LITTER_RE =
   /^(__decryptedChallenge|__nextFlash|__captcha|__solver|__bot|__scrape|__crawl|__auto|__inject|__hook|__intercept|__proxy|__bypass|__patch|puppeteer_|playwright_|selenium_|webdriver_|cdc_|_phantom$|callPhantom$)/;
 
 const AUTOMATION_GLOBALS: [string, () => unknown][] = [
-  ['playwright',          () => (window as any).__playwright],
-  ['puppeteer',           () => (window as any).__puppeteer],
-  ['phantom',             () => (window as any)._phantom],
-  ['nightmare',           () => (window as any).__nightmare],
-  ['callPhantom',         () => (window as any).callPhantom],
-  ['selenium_unwrapped',  () => (document as any).__selenium_unwrapped],
-  ['webdriver_evaluate',  () => (document as any).__webdriver_evaluate],
-  ['driver_evaluate',     () => (document as any).__driver_evaluate],
+  ['playwright', () => (window as any).__playwright],
+  ['puppeteer', () => (window as any).__puppeteer],
+  ['phantom', () => (window as any)._phantom],
+  ['nightmare', () => (window as any).__nightmare],
+  ['callPhantom', () => (window as any).callPhantom],
+  ['selenium_unwrapped', () => (document as any).__selenium_unwrapped],
+  ['webdriver_evaluate', () => (document as any).__webdriver_evaluate],
+  ['driver_evaluate', () => (document as any).__driver_evaluate],
 ];
 
 function checkCdcGlobals(): boolean {
@@ -299,7 +304,9 @@ function checkCdcGlobals(): boolean {
     for (const key of Object.getOwnPropertyNames(document)) {
       if (/^(\$)?cdc_/.test(key)) return true;
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return false;
 }
 
@@ -308,7 +315,9 @@ function checkPwBindings(): boolean {
     for (const key of Object.getOwnPropertyNames(window)) {
       if (/^__pw_/.test(key)) return true;
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return false;
 }
 
@@ -335,7 +344,9 @@ function checkPhantomMismatch(): boolean {
     if (!phantom) return false;
     const iframeWebdriver = (phantom.navigator as any).webdriver;
     if (!mainWebdriver && iframeWebdriver === true) return true;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return false;
 }
 
@@ -356,7 +367,9 @@ function checkAutomationGlobals(): string[] {
   for (const [name, getFn] of AUTOMATION_GLOBALS) {
     try {
       if (getFn() != null) found.push(name);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return found;
 }
@@ -370,14 +383,20 @@ function getCrossRealmToString(): typeof Function.prototype.toString | null {
     shadow1.appendChild(iframe1);
     document.body.appendChild(host1);
     const win1 = iframe1.contentWindow;
-    if (!win1) { host1.remove(); return null; }
+    if (!win1) {
+      host1.remove();
+      return null;
+    }
 
     const doc1 = win1.document;
     const iframe2 = doc1.createElement('iframe');
     iframe2.style.cssText = HIDDEN_IFRAME_CSS;
     doc1.body.appendChild(iframe2);
     const win2 = iframe2.contentWindow;
-    if (!win2) { host1.remove(); return null; }
+    if (!win2) {
+      host1.remove();
+      return null;
+    }
 
     const cleanToString = (win2 as any).Function.prototype.toString;
     setTimeout(() => host1.remove(), 0);
@@ -393,12 +412,21 @@ function detectCrossRealmTampering(): string[] {
   if (!cleanToString) return signals;
 
   const checks: [string, () => unknown][] = [
-    ['Element.getBoundingClientRect',   () => Element.prototype.getBoundingClientRect],
-    ['HTMLCanvasElement.getContext',     () => HTMLCanvasElement.prototype.getContext],
-    ['HTMLCanvasElement.toDataURL',      () => HTMLCanvasElement.prototype.toDataURL],
-    ['Performance.now',                  () => Performance.prototype.now],
-    ['Date.getTimezoneOffset',           () => Date.prototype.getTimezoneOffset],
-    ['Navigator.toString',               () => Navigator.prototype.toString],
+    [
+      'Element.getBoundingClientRect',
+      () => Element.prototype.getBoundingClientRect,
+    ],
+    [
+      'HTMLCanvasElement.getContext',
+      () => HTMLCanvasElement.prototype.getContext,
+    ],
+    [
+      'HTMLCanvasElement.toDataURL',
+      () => HTMLCanvasElement.prototype.toDataURL,
+    ],
+    ['Performance.now', () => Performance.prototype.now],
+    ['Date.getTimezoneOffset', () => Date.prototype.getTimezoneOffset],
+    ['Navigator.toString', () => Navigator.prototype.toString],
   ];
 
   for (const [name, getFn] of checks) {
@@ -410,19 +438,21 @@ function detectCrossRealmTampering(): string[] {
       if (NATIVE_RE.test(mainResult) && !NATIVE_RE.test(crossResult)) {
         signals.push(name);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return signals;
 }
 
 function detectCdp(): CdpSignals {
   return {
-    cdcGlobals:          checkCdcGlobals(),
-    pwBindings:          checkPwBindings(),
-    phantomMismatch:     checkPhantomMismatch(),
-    clientLitter:        checkClientLitter(),
-    automationGlobals:   checkAutomationGlobals(),
-    crossRealmTampered:  detectCrossRealmTampering(),
+    cdcGlobals: checkCdcGlobals(),
+    pwBindings: checkPwBindings(),
+    phantomMismatch: checkPhantomMismatch(),
+    clientLitter: checkClientLitter(),
+    automationGlobals: checkAutomationGlobals(),
+    crossRealmTampered: detectCrossRealmTampering(),
   };
 }
 
@@ -449,33 +479,34 @@ export default async function getHeadlessFeatures(
     const [scores, highestScore] = getPlatformEstimate();
 
     const likeHeadless: LikeHeadlessSignals = {
-      noChrome:            hasNoChrome(),
-      hasPermissionsBug:   await hasPermissionsBug(),
-      noPlugins:           hasNoPlugins(),
-      noMimeTypes:         hasNoMimeTypes(),
+      noChrome: hasNoChrome(),
+      hasPermissionsBug: await hasPermissionsBug(),
+      noPlugins: hasNoPlugins(),
+      noMimeTypes: hasNoMimeTypes(),
       notificationIsDenied: hasNotificationDenied(),
-      uaDataIsBlank:       await hasBlankUaData(),
-      pdfIsDisabled:       'pdfViewerEnabled' in navigator && navigator.pdfViewerEnabled === false,
-      noTaskbar:           hasNoTaskbar(),
-      hasVvpScreenRes:     hasVvpScreenRes(),
+      uaDataIsBlank: await hasBlankUaData(),
+      pdfIsDisabled:
+        'pdfViewerEnabled' in navigator && navigator.pdfViewerEnabled === false,
+      noTaskbar: hasNoTaskbar(),
+      hasVvpScreenRes: hasVvpScreenRes(),
       hasSoftwareRenderer: hasSoftwareRenderer(workerScope),
-      devToolsOpen:        detectDevTools(),
+      devToolsOpen: detectDevTools(),
     };
 
     const headless: HeadlessSignals = {
-      webDriverIsOn:       isWebDriverOn(),
-      hasHeadlessUA:       hasHeadlessUA(),
+      webDriverIsOn: isWebDriverOn(),
+      hasHeadlessUA: hasHeadlessUA(),
       hasHeadlessWorkerUA: hasHeadlessWorkerUA(workerScope),
     };
 
     const stealth: StealthSignals = {
-      hasIframeProxy:       hasIframeProxy(),
-      hasHighChromeIndex:   hasHighChromeIndex(),
-      hasBadChromeRuntime:  hasBadChromeRuntime(),
-      hasToStringProxy:     !!lieProps['Function.toString'],
-      hasBadWebGL:          hasBadWebGL(webgl, workerScope),
-      missingLoadTimes:     hasMissingLoadTimes(),
-      missingCsi:           hasMissingCsi(),
+      hasIframeProxy: hasIframeProxy(),
+      hasHighChromeIndex: hasHighChromeIndex(),
+      hasBadChromeRuntime: hasBadChromeRuntime(),
+      hasToStringProxy: !!lieProps['Function.toString'],
+      hasBadWebGL: hasBadWebGL(webgl, workerScope),
+      missingLoadTimes: hasMissingLoadTimes(),
+      missingCsi: hasMissingCsi(),
       incompleteAppSurface: hasIncompleteAppSurface(),
     };
 
@@ -489,12 +520,18 @@ export default async function getHeadlessFeatures(
       headless,
       stealth,
       cdp,
-      likeHeadlessRating: calculateRating(likeHeadless as unknown as Record<string, boolean>),
-      headlessRating:     calculateRating(headless as unknown as Record<string, boolean>),
-      stealthRating:      calculateRating(stealth as unknown as Record<string, boolean>),
+      likeHeadlessRating: calculateRating(
+        likeHeadless as unknown as Record<string, boolean>,
+      ),
+      headlessRating: calculateRating(
+        headless as unknown as Record<string, boolean>,
+      ),
+      stealthRating: calculateRating(
+        stealth as unknown as Record<string, boolean>,
+      ),
       systemFonts,
-      platformEstimate:   [scores || {}, highestScore || 0],
-      historyLength:      history.length,
+      platformEstimate: [scores || {}, highestScore || 0],
+      historyLength: history.length,
     };
   } catch (error) {
     logTestResult({ test: 'headless', passed: false });

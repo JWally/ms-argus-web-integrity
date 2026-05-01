@@ -50,8 +50,10 @@ function makeBridge(opts: {
   });
 
   // Payload composition helpers
-  bridge.register(BridgeApi.GET_PAYLOAD_UUID, { get: () => 'fake-session-uuid' });
-  bridge.register(BridgeApi.GET_META,         { get: () => fakeMeta });
+  bridge.register(BridgeApi.GET_PAYLOAD_UUID, {
+    get: () => 'fake-session-uuid',
+  });
+  bridge.register(BridgeApi.GET_META, { get: () => fakeMeta });
   bridge.register(BridgeApi.GET_SERVER_PUB_KEY, {
     get: () => 'A'.repeat(88), // non-empty → bytecode enters payload-assembly branch
   });
@@ -64,40 +66,47 @@ function makeBridge(opts: {
 
   // Async device-identity APIs
   bridge.register(BridgeApi.GET_CRYPTO_PUBKEY, { call: async () => '' });
-  bridge.register(BridgeApi.GET_CLIENT_UUID,   { call: async () => null });
-  bridge.register(BridgeApi.SIGN_BYTES,        { call: async () => '' });
+  bridge.register(BridgeApi.GET_CLIENT_UUID, { call: async () => null });
+  bridge.register(BridgeApi.SIGN_BYTES, { call: async () => '' });
 
   // Sigint probes
-  bridge.register(BridgeApi.FETCH_TLS_FP,      { call: async () => '' });
-  bridge.register(BridgeApi.FETCH_TCP_PROBE,   { call: async () => '' });
-  bridge.register(BridgeApi.FETCH_H2_PROBE,    { call: async () => '' });
+  bridge.register(BridgeApi.FETCH_TLS_FP, { call: async () => '' });
+  bridge.register(BridgeApi.FETCH_TCP_PROBE, { call: async () => '' });
+  bridge.register(BridgeApi.FETCH_H2_PROBE, { call: async () => '' });
 
   // ECDH: pretend we can generate keys and derive an "encrypted" buffer
   bridge.register(BridgeApi.ECDH_GENERATE_KEY, {
     call: async () => ({ publicKey: {}, privateKey: {} }),
   });
-  bridge.register(BridgeApi.ECDH_EXPORT_RAW,   { call: async () => 'pubkeyb64' });
+  bridge.register(BridgeApi.ECDH_EXPORT_RAW, { call: async () => 'pubkeyb64' });
   bridge.register(BridgeApi.ECDH_DERIVE_ENCRYPT, {
     call: async (_thisArg, args) => {
       // args[2] is the XOR-scrambled payload string; undo it to see the
       // original JSON and capture for assertions.
       const scrambled = args[2] as string;
       const token = 'sessiontoken';
-      let fib0 = 1, fib1 = 1;
+      let fib0 = 1,
+        fib1 = 1;
       let plain = '';
       for (let i = 0; i < scrambled.length; i++) {
         const t = token.charCodeAt(i % token.length);
         const f = fib1 % 256;
         plain += String.fromCharCode(scrambled.charCodeAt(i) ^ (t ^ f));
         const fib2 = fib0 + fib1;
-        fib0 = fib1; fib1 = fib2;
-        if (fib1 > 1000000) { fib0 = 1; fib1 = 1; }
+        fib0 = fib1;
+        fib1 = fib2;
+        if (fib1 > 1000000) {
+          fib0 = 1;
+          fib1 = 1;
+        }
       }
       opts.postCapture.json = plain;
       return new Uint8Array([1, 2, 3]);
     },
   });
-  bridge.register(BridgeApi.POST_PAYLOAD, { call: async () => 'fake-session-id' });
+  bridge.register(BridgeApi.POST_PAYLOAD, {
+    call: async () => 'fake-session-id',
+  });
 
   return bridge;
 }

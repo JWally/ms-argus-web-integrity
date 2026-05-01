@@ -14,7 +14,6 @@
  * @module utils/crypto
  */
 
-
 /**
  * Generates an 8-character hex hash using an FNV-1a inspired algorithm.
  *

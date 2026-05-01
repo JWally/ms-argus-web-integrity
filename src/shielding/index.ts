@@ -200,7 +200,9 @@ function detectFirefoxSecurityFeatures(): FirefoxSecurityFeatures {
  * @param features - Detected Firefox security features
  * @returns 'resistFingerprinting' | 'standard' | 'safer'
  */
-function getFirefoxMode(features: FirefoxSecurityFeatures): ShieldingFingerprint['mode'] {
+function getFirefoxMode(
+  features: FirefoxSecurityFeatures,
+): ShieldingFingerprint['mode'] {
   // Check if Tor Browser (specific APIs disabled)
   const isTorBrowser =
     FIREFOX_PRIVACY_FEATURES.filter(

@@ -8,8 +8,6 @@
  * to keep cases independent.
  */
 
- 
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // In-memory IDB substitute. Shared across the mock factory and each test so
@@ -29,7 +27,9 @@ function makeFakeDb(): any {
       objectStore: () => ({
         get: (key: string) =>
           makeFakeRequest(
-            idbStorage.has(key) ? { id: key, value: idbStorage.get(key) } : undefined,
+            idbStorage.has(key)
+              ? { id: key, value: idbStorage.get(key) }
+              : undefined,
           ),
         put: (record: { id: string; value: string }) => {
           idbStorage.set(record.id, record.value);
@@ -42,20 +42,20 @@ function makeFakeDb(): any {
 }
 
 vi.mock('./get-crypto-id', async () => {
-  const actual = await vi.importActual<typeof import('./get-crypto-id')>('./get-crypto-id');
+  const actual =
+    await vi.importActual<typeof import('./get-crypto-id')>('./get-crypto-id');
   return {
     ...actual,
     TABLE_NAME_CLIENT_UUID: 'client-uuid',
     openIntegrityDb: vi.fn(() =>
-      idbAvailable ? Promise.resolve(makeFakeDb()) : Promise.reject(new Error('no idb')),
+      idbAvailable
+        ? Promise.resolve(makeFakeDb())
+        : Promise.reject(new Error('no idb')),
     ),
   };
 });
 
-import {
-  getClientUuid,
-  resetClientUuidMemo,
-} from './get-client-uuid';
+import { getClientUuid, resetClientUuidMemo } from './get-client-uuid';
 
 const COOKIE_NAME = '_argus_cuid';
 const LS_KEY = 'argus_cuid';
@@ -88,7 +88,8 @@ afterEach(() => {
   resetClientUuidMemo();
 });
 
-const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 describe('getClientUuid — cold start', () => {
   it('generates a v4 UUID when no store has one', async () => {

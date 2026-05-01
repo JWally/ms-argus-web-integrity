@@ -293,8 +293,6 @@ export function getH2ProbeEndpoint(config: SigintConfig): string {
   return buildEndpoint(merged, 'h2');
 }
 
-
-
 /* ------------------------------------------------------------------ */
 /*  Fetch Helpers                                                      */
 /* ------------------------------------------------------------------ */
@@ -373,9 +371,8 @@ export async function fetchTlsFingerprint(config: SigintConfig): Promise<{
   // (e.g. a VPN that was later disconnected) stays bound to the original
   // egress, so CloudFront stamps a stale viewer-address into the signed
   // token. Server side accepts `*.<stage>id.<zone>` via wildcard SAN.
-  const label = Array.from(
-    crypto.getRandomValues(new Uint8Array(6)),
-    (b) => b.toString(16).padStart(2, '0'),
+  const label = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) =>
+    b.toString(16).padStart(2, '0'),
   ).join('');
   const url = getTlsFingerprintEndpoint(config).replace(
     /^(https:\/\/)([^/]+)/,
@@ -616,11 +613,9 @@ export async function fetchH2Probe(config: SigintConfig): Promise<{
   >(url, merged.timeout);
 }
 
-
 /* ------------------------------------------------------------------ */
 /*  Main Collector                                                     */
 /* ------------------------------------------------------------------ */
-
 
 /**
  * Collect all enabled sigint signals in parallel and return the combined result.
@@ -656,8 +651,6 @@ export async function collectSigintData(
     requests.push(fetchH2Probe(config));
     requestTypes.push('h2');
   }
-
-
 
   // Execute in parallel
   const results = await Promise.all(requests);
@@ -824,7 +817,6 @@ export function getTlsHash(data: SigintData): string | null {
 export function getThirdPartyCookieId(data: SigintData): string | null {
   return data.tlsFingerprint?.id || null;
 }
-
 
 /**
  * Get the HTTP/2 protocol fingerprint string.

@@ -38,7 +38,8 @@ const SIGINT_CONFIG: SigintConfig = {
 
 // Captured synchronously at IIFE load — document.currentScript is only
 // valid during the script's parse/execute phase, not inside async callbacks.
-const SCRIPT_SRC = (document.currentScript as HTMLScriptElement | null)?.src ?? '';
+const SCRIPT_SRC =
+  (document.currentScript as HTMLScriptElement | null)?.src ?? '';
 const SCRIPT_PARAMS: URLSearchParams = (() => {
   try {
     return new URL(SCRIPT_SRC).searchParams;
@@ -73,7 +74,9 @@ async function main(): Promise<void> {
   // (cpi, session_id). Optional during the migration to dual-key auth.
   const cpi = SCRIPT_PARAMS.get('cpi');
   if (!runId) {
-    throw new Error('argus-iframe: missing runId (script src missing query params?)');
+    throw new Error(
+      'argus-iframe: missing runId (script src missing query params?)',
+    );
   }
 
   // API base is required — baked at build time. If the replace plugin

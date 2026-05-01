@@ -87,7 +87,13 @@ export interface ShieldingFingerprint {
   /** Detected security features — null if no privacy tool detected */
   security: BraveSecurityFeatures | FirefoxSecurityFeatures | null;
   /** Protection mode — null if no privacy tool detected */
-  mode: 'allow' | 'standard' | 'strict' | 'safer' | 'resistFingerprinting' | null;
+  mode:
+    | 'allow'
+    | 'standard'
+    | 'strict'
+    | 'safer'
+    | 'resistFingerprinting'
+    | null;
   /** JS engine: 'Blink' | 'Gecko' */
   engine: string;
   /**

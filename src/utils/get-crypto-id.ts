@@ -161,9 +161,11 @@ async function writeDecoys(db: IDBDatabase): Promise<void> {
 }
 
 const setupCryptography = async (): Promise<CryptoKeys> => {
-  const db = await withTimeout(openIntegrityDb(), IDB_TIMEOUT_MS, undefined).catch(
-    () => undefined,
-  );
+  const db = await withTimeout(
+    openIntegrityDb(),
+    IDB_TIMEOUT_MS,
+    undefined,
+  ).catch(() => undefined);
 
   try {
     if (db) {

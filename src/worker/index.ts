@@ -8,7 +8,16 @@ import {
   IS_BLINK,
   getReportedPlatform,
 } from '../utils/helpers';
-import { computeTimezoneOffset, getLocaleString, getCurrencyLocales, getMainWebgl, getConnection, getPermissions, getStorageEstimate, getMediaCapabilities } from './collect';
+import {
+  computeTimezoneOffset,
+  getLocaleString,
+  getCurrencyLocales,
+  getMainWebgl,
+  getConnection,
+  getPermissions,
+  getStorageEstimate,
+  getMediaCapabilities,
+} from './collect';
 import { enrichScope } from './enrich';
 import type { WorkerScopeData } from './types';
 
@@ -214,7 +223,9 @@ if (typeof SharedWorkerGlobalScope !== 'undefined' && self instanceof SharedWork
  * Creates a Blob URL from the inline worker script.
  */
 function createWorkerBlobUrl(): string {
-  return URL.createObjectURL(new Blob([INLINE_WORKER_SCRIPT], { type: 'application/javascript' }));
+  return URL.createObjectURL(
+    new Blob([INLINE_WORKER_SCRIPT], { type: 'application/javascript' }),
+  );
 }
 
 /**
@@ -226,18 +237,33 @@ function spawnBlobWorker(
 ): Promise<WorkerScopeData | null> {
   return new Promise((resolve) => {
     const timeout = setTimeout(() => resolve(null), WORKER_TIMEOUT_MS);
-    const done = (result: WorkerScopeData | null) => { clearTimeout(timeout); resolve(result); };
+    const done = (result: WorkerScopeData | null) => {
+      clearTimeout(timeout);
+      resolve(result);
+    };
 
     try {
       if (kind === 'shared') {
         const w = new SharedWorker(blobUrl);
         w.port.start();
-        w.port.onmessage = (e) => { w.port.close(); done(e.data); };
-        w.onerror = () => { w.port.close(); done(null); };
+        w.port.onmessage = (e) => {
+          w.port.close();
+          done(e.data);
+        };
+        w.onerror = () => {
+          w.port.close();
+          done(null);
+        };
       } else {
         const w = new Worker(blobUrl);
-        w.onmessage = (e) => { w.terminate(); done(e.data); };
-        w.onerror = () => { w.terminate(); done(null); };
+        w.onmessage = (e) => {
+          w.terminate();
+          done(e.data);
+        };
+        w.onerror = () => {
+          w.terminate();
+          done(null);
+        };
       }
     } catch {
       done(null);
@@ -249,9 +275,14 @@ function spawnBlobWorker(
  * Builds the main-thread scope baseline for cross-context validation.
  */
 async function collectMainScope() {
-  const { systemCurrencyLocale, engineCurrencyLocale } = getCurrencyLocales(navigator.language);
+  const { systemCurrencyLocale, engineCurrencyLocale } = getCurrencyLocales(
+    navigator.language,
+  );
   const locale = getLocaleString();
-  const enriched = enrichScope({ userAgent: navigator.userAgent, userAgentData: (navigator as any).userAgentData });
+  const enriched = enrichScope({
+    userAgent: navigator.userAgent,
+    userAgentData: (navigator as any).userAgentData,
+  });
   const [permissions, storageEstimate, mediaCapabilities] = await Promise.all([
     getPermissions().catch(() => null),
     getStorageEstimate().catch(() => null),
@@ -269,12 +300,16 @@ async function collectMainScope() {
     systemCurrencyLocale,
     engineCurrencyLocale,
     localeEntropyIsTrusty: engineCurrencyLocale === systemCurrencyLocale,
-    localeIntlEntropyIsTrusty: new Set(String(navigator.language).split(',')).has(locale),
+    localeIntlEntropyIsTrusty: new Set(
+      String(navigator.language).split(','),
+    ).has(locale),
     timezoneOffset: computeTimezoneOffset(),
     timezoneLocation: Intl.DateTimeFormat().resolvedOptions().timeZone,
     ...getMainWebgl(),
     ...enriched,
-    ...((navigator as any).userAgentData ? { userAgentData: (navigator as any).userAgentData } : {}),
+    ...((navigator as any).userAgentData
+      ? { userAgentData: (navigator as any).userAgentData }
+      : {}),
     appVersion: navigator.appVersion,
     product: navigator.product,
     onLine: navigator.onLine,
@@ -336,11 +371,19 @@ export default async function getBestWorkerScope() {
     // Enrich all scopes with derived fields
     Object.assign(workerScope, enrichScope(workerScope));
     const otherScope = workerScope === sharedResult ? webResult : sharedResult;
-    if (otherScope?.userAgent) Object.assign(otherScope, enrichScope(otherScope));
+    if (otherScope?.userAgent)
+      Object.assign(otherScope, enrichScope(otherScope));
 
     // ── Cross-context validation ────────────────────────────────────
 
-    const { system, userAgent, userAgentData, platform, deviceMemory, hardwareConcurrency } = workerScope;
+    const {
+      system,
+      userAgent,
+      userAgentData,
+      platform,
+      deviceMemory,
+      hardwareConcurrency,
+    } = workerScope;
 
     // Navigator lies: worker vs main thread
     const workerScopeMatchLie = 'does not match worker scope';
@@ -350,7 +393,10 @@ export default async function getBestWorkerScope() {
     if (userAgent != navigator.userAgent) {
       documentLie('Navigator.userAgent', workerScopeMatchLie);
     }
-    if (hardwareConcurrency && hardwareConcurrency != navigator.hardwareConcurrency) {
+    if (
+      hardwareConcurrency &&
+      hardwareConcurrency != navigator.hardwareConcurrency
+    ) {
       documentLie('Navigator.hardwareConcurrency', workerScopeMatchLie);
     }
     if (deviceMemory && deviceMemory != (navigator as any).deviceMemory) {
@@ -383,8 +429,12 @@ export default async function getBestWorkerScope() {
     }
 
     // Version lie: userAgentData version vs user agent version
-    const versionSupported = workerScope.userAgentDataVersion && workerScope.userAgentVersion;
-    if (versionSupported && workerScope.userAgentDataVersion != workerScope.userAgentVersion) {
+    const versionSupported =
+      workerScope.userAgentDataVersion && workerScope.userAgentVersion;
+    if (
+      versionSupported &&
+      workerScope.userAgentDataVersion != workerScope.userAgentVersion
+    ) {
       workerScope.lied = true;
       workerScope.lies.version = `userAgentData version ${workerScope.userAgentDataVersion} and user agent version ${workerScope.userAgentVersion} do not match`;
       documentLie('WorkerGlobalScope', workerScope.lies.version);
@@ -393,20 +443,30 @@ export default async function getBestWorkerScope() {
     // Platform version lie (Windows/macOS)
     const FEATURE_CASE = IS_BLINK && CSS.supports('accent-color: initial');
     const getPlatformVersionLie = (device: any, uaData: any) => {
-      if (!/windows|mac/i.test(device) || !uaData?.platformVersion) return false;
+      if (!/windows|mac/i.test(device) || !uaData?.platformVersion)
+        return false;
       if (uaData.platform == 'macOS') {
         return FEATURE_CASE ? /_/.test(uaData.platformVersion) : false;
       }
-      const reportedVersionNumber = (/windows ([\d|\.]+)/i.exec(device) || [])[1];
+      const reportedVersionNumber = (/windows ([\d|\.]+)/i.exec(device) ||
+        [])[1];
       const windows10OrHigherReport = +reportedVersionNumber == 10;
       const { platformVersion } = uaData;
-      const versionMap: Record<string, string> = { '6.1': '7', '6.2': '8', '6.3': '8.1', '10.0': '10' };
+      const versionMap: Record<string, string> = {
+        '6.1': '7',
+        '6.2': '8',
+        '6.3': '8.1',
+        '10.0': '10',
+      };
       const version = versionMap[platformVersion];
       if (!FEATURE_CASE && version) return version != reportedVersionNumber;
       const parts = platformVersion.split('.');
       if (parts.length != 3) return true;
       const windows10OrHigherPlatform = +parts[0] > 0;
-      return (windows10OrHigherPlatform && !windows10OrHigherReport) || (!windows10OrHigherPlatform && windows10OrHigherReport);
+      return (
+        (windows10OrHigherPlatform && !windows10OrHigherReport) ||
+        (!windows10OrHigherPlatform && windows10OrHigherReport)
+      );
     };
     if (getPlatformVersionLie(workerScope.device, userAgentData)) {
       workerScope.lied = true;
@@ -417,25 +477,41 @@ export default async function getBestWorkerScope() {
     // Cross-scope consistency: shared vs web worker
     if (sharedResult?.userAgent && webResult?.userAgent) {
       const crossFields: Array<keyof WorkerScopeData> = [
-        'webgl2Renderer', 'webgl2Vendor', 'systemCurrencyLocale', 'engineCurrencyLocale',
+        'webgl2Renderer',
+        'webgl2Vendor',
+        'systemCurrencyLocale',
+        'engineCurrencyLocale',
       ];
       for (const f of crossFields) {
         const a = sharedResult[f];
         const b = webResult[f];
         if (a !== undefined && b !== undefined && a !== b) {
           workerScope.lied = true;
-          documentLie('WorkerGlobalScope', `${f} differs between shared and web worker`);
+          documentLie(
+            'WorkerGlobalScope',
+            `${f} differs between shared and web worker`,
+          );
         }
       }
       if (sharedResult.userAgentData && webResult.userAgentData) {
-        if (JSON.stringify(sharedResult.userAgentData) !== JSON.stringify(webResult.userAgentData)) {
+        if (
+          JSON.stringify(sharedResult.userAgentData) !==
+          JSON.stringify(webResult.userAgentData)
+        ) {
           workerScope.lied = true;
-          documentLie('WorkerGlobalScope', 'userAgentData differs between shared and web worker');
+          documentLie(
+            'WorkerGlobalScope',
+            'userAgentData differs between shared and web worker',
+          );
         }
       }
     }
 
-    logTestResult({ time: timer.stop(), test: `${workerType} worker`, passed: true });
+    logTestResult({
+      time: timer.stop(),
+      test: `${workerType} worker`,
+      passed: true,
+    });
     return {
       lied: workerScope.lied,
       lies: workerScope.lies,

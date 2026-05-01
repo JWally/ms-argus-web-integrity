@@ -106,9 +106,7 @@ export function getPhantomIframe(
     doc.body.appendChild(div);
 
     const iframeWindow = win[numberOfIframes];
-    const phantomWindow = iframeWindow
-      ? getBehemothIframe(iframeWindow)
-      : null;
+    const phantomWindow = iframeWindow ? getBehemothIframe(iframeWindow) : null;
 
     return {
       iframeWindow: (phantomWindow || iframeWindow || win) as Window &

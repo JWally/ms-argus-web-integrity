@@ -59,7 +59,9 @@ export async function deriveEmbedMask(salt: Uint8Array): Promise<Uint8Array> {
 }
 
 export async function deriveTimeMask(bucket: number): Promise<Uint8Array> {
-  const h = await sha256(concatBytes(te.encode('argus-vm-t-'), bucketToBytes(bucket)));
+  const h = await sha256(
+    concatBytes(te.encode('argus-vm-t-'), bucketToBytes(bucket)),
+  );
   return h.subarray(0, KEY_LEN);
 }
 
