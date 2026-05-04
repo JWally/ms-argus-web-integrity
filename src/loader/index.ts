@@ -15,17 +15,24 @@
  *
  * Integration patterns:
  *
- *   // Static copy/paste — fires once on parse
+ *   // Auto-run, safe-by-default scheduling (idle after window.load):
  *   <script
- *     src="https://.../argus-loader.js"
- *     data-session-id="{{merchant_session}}"
+ *     src="https://.../argus-loader.iife.js"
  *     data-auto-run
+ *     data-cpi="argus_cpi_live_..."
  *   ></script>
  *
- *   // SPA — manual trigger, merchant controls when
- *   <script src="https://.../argus-loader.js"></script>
+ *   // Auto-run with explicit scheduling:
+ *   //   data-on="immediate"   sync at parse time (legacy)
+ *   //   data-on="load"        on window 'load' event
+ *   //   data-on="idle"        after load + requestIdleCallback (default)
+ *   //   data-on="interaction" first user pointerdown/keydown/scroll/touch
+ *   <script src="..." data-auto-run data-on="interaction" data-cpi="..."></script>
+ *
+ *   // SPA — manual trigger, merchant controls when:
+ *   <script src="..."></script>
  *   <script>
- *     const result = await window.argus.run({ sessionId: 'order-123' });
+ *     const result = await window.argus.run({ sessionId: 'order-123', cpi: '...' });
  *   </script>
  */
 
@@ -318,6 +325,78 @@ interface ArgusGlobal {
   _state: LoaderState;
 }
 
+/**
+ * Auto-run scheduling mode. Controls when an auto-run-tagged loader fires
+ * its first run() relative to the parent page lifecycle.
+ *
+ *   immediate    sync at script parse time (legacy)
+ *   load         on window 'load' event (or right away if already loaded)
+ *   idle         after load + requestIdleCallback (DEFAULT — safe for perf)
+ *   interaction  first user pointerdown/keydown/scroll/touchstart
+ */
+type ScheduleMode = 'immediate' | 'load' | 'idle' | 'interaction';
+
+const VALID_MODES: ReadonlyArray<ScheduleMode> = [
+  'immediate',
+  'load',
+  'idle',
+  'interaction',
+];
+
+function readScheduleMode(script: HTMLScriptElement | null): ScheduleMode {
+  const raw = script?.getAttribute('data-on')?.toLowerCase();
+  if (raw && (VALID_MODES as ReadonlyArray<string>).includes(raw)) {
+    return raw as ScheduleMode;
+  }
+  return 'idle';
+}
+
+function onLoadOrNow(cb: () => void): void {
+  if (document.readyState === 'complete') {
+    cb();
+  } else {
+    window.addEventListener('load', cb, { once: true });
+  }
+}
+
+function scheduleAutoRun(mode: ScheduleMode, fire: () => void): void {
+  if (mode === 'immediate') {
+    fire();
+    return;
+  }
+  if (mode === 'load') {
+    onLoadOrNow(fire);
+    return;
+  }
+  if (mode === 'idle') {
+    const ric =
+      (
+        window as unknown as {
+          requestIdleCallback?: (
+            cb: () => void,
+            opts?: { timeout: number },
+          ) => number;
+        }
+      ).requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1));
+    onLoadOrNow(() => ric(fire, { timeout: 5000 }));
+    return;
+  }
+  // interaction
+  const events: ReadonlyArray<keyof WindowEventMap> = [
+    'pointerdown',
+    'keydown',
+    'scroll',
+    'touchstart',
+  ];
+  const trigger = (): void => {
+    events.forEach((e) => window.removeEventListener(e, trigger));
+    fire();
+  };
+  events.forEach((e) =>
+    window.addEventListener(e, trigger, { once: true, passive: true }),
+  );
+}
+
 const argus: ArgusGlobal = { run, destroy, _state: state };
 
 const win = window as unknown as Record<string, unknown>;
@@ -335,8 +414,12 @@ if (win.argus) {
     const cpi = loaderScript.getAttribute('data-cpi') ?? undefined;
     const timeoutAttr = loaderScript.getAttribute('data-timeout-ms');
     const timeoutMs = timeoutAttr ? parseInt(timeoutAttr, 10) : undefined;
-    run({ sessionId, cpi, timeoutMs }).catch((err) => {
-      console.error('[argus-loader] auto-run failed:', err);
-    });
+    const mode = readScheduleMode(loaderScript);
+    const fire = (): void => {
+      run({ sessionId, cpi, timeoutMs }).catch((err) => {
+        console.error('[argus-loader] auto-run failed:', err);
+      });
+    };
+    scheduleAutoRun(mode, fire);
   }
 }

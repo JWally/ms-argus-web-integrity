@@ -1,6 +1,6 @@
 {
   "name": "argus",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Browser fingerprinting library for fraud and bot detection",
   "main": "dist/argus.esm.js",
   "module": "dist/argus.esm.js",
