@@ -1,5 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fetchPatProbe, diagString } from './pat';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { fetchPatProbe, getPatToken, diagString } from './pat';
+
+beforeEach(() => {
+  if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -98,5 +102,73 @@ describe('diagString', () => {
       hasToken: false,
       err: 'TimeoutError',
     });
+  });
+});
+
+describe('getPatToken (cache-aware)', () => {
+  it('hits the network when cache is empty and writes the result', async () => {
+    const future = Math.floor(Date.now() / 1000) + 45;
+    const fetchSpy = vi.fn(
+      () =>
+        new Response(JSON.stringify({ token: 'fresh.token', exp: future }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+    const r = await getPatToken('https://api/pat-attestation');
+    expect(r.token).toBe('fresh.token');
+    expect(r.exp).toBe(future);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const cached = JSON.parse(sessionStorage.getItem('argus.pat.v1') ?? '');
+    expect(cached.token).toBe('fresh.token');
+    expect(cached.exp).toBe(future);
+  });
+
+  it('reuses the cached token when exp is still in the future', async () => {
+    const future = Math.floor(Date.now() / 1000) + 30;
+    sessionStorage.setItem(
+      'argus.pat.v1',
+      JSON.stringify({ exp: future, token: 'cached.token' }),
+    );
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const r = await getPatToken('https://api/pat-attestation');
+    expect(r.token).toBe('cached.token');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('drops the cached token when expired and fetches fresh', async () => {
+    const past = Math.floor(Date.now() / 1000) - 5;
+    sessionStorage.setItem(
+      'argus.pat.v1',
+      JSON.stringify({ exp: past, token: 'stale.token' }),
+    );
+    const future = Math.floor(Date.now() / 1000) + 45;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Response(
+            JSON.stringify({ token: 'replacement.token', exp: future }),
+          ),
+      ),
+    );
+    const r = await getPatToken('https://api/pat-attestation');
+    expect(r.token).toBe('replacement.token');
+    const cached = JSON.parse(sessionStorage.getItem('argus.pat.v1') ?? '');
+    expect(cached.token).toBe('replacement.token');
+  });
+
+  it('does not write the cache on a 401 (no token in response)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Response(JSON.stringify({ challenge: 'abc' }), { status: 401 }),
+      ),
+    );
+    const r = await getPatToken('https://api/pat-attestation');
+    expect(r.token).toBe('');
+    expect(sessionStorage.getItem('argus.pat.v1')).toBeNull();
   });
 });

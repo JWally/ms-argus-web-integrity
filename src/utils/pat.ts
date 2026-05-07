@@ -31,6 +31,10 @@ export interface PatProbeResult {
   hasToken: boolean;
   /** Short exception message when fetch rejected. Truncated to 64 chars. */
   err?: string;
+  /** Server-supplied client-refresh trigger (epoch seconds). When set, the
+   *  SDK should reuse this token until `nowSec >= exp`. Always strictly
+   *  less than the server's hard expiry baked into the signed token. */
+  exp?: number;
 }
 
 const EMPTY: PatProbeResult = {
@@ -39,6 +43,57 @@ const EMPTY: PatProbeResult = {
   ok: false,
   hasToken: false,
 };
+
+const CACHE_KEY = 'argus.pat.v1';
+
+interface CachedToken {
+  exp: number; // epoch seconds; matches what the server returned
+  token: string;
+}
+
+function nowSec(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+/** Best-effort sessionStorage access — silently no-op in environments where
+ *  it's missing (SSR, sandboxed iframes, private modes that throw on
+ *  setItem, etc.). */
+function readCache(): CachedToken | null {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedToken>;
+    if (
+      typeof parsed.token !== 'string' ||
+      typeof parsed.exp !== 'number' ||
+      parsed.token.length === 0
+    ) {
+      return null;
+    }
+    return { exp: parsed.exp, token: parsed.token };
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(c: CachedToken): void {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(c));
+  } catch {
+    /* quota / private mode / disabled storage — silently skip */
+  }
+}
+
+function clearCache(): void {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    sessionStorage.removeItem(CACHE_KEY);
+  } catch {
+    /* nothing to do */
+  }
+}
 
 export async function fetchPatProbe(
   endpoint: string,
@@ -55,22 +110,61 @@ export async function fetchPatProbe(
     });
     let token = '';
     let hasToken = false;
+    let exp: number | undefined;
     try {
-      const body = (await res.json()) as { token?: unknown };
+      const body = (await res.json()) as { token?: unknown; exp?: unknown };
       if (typeof body.token === 'string' && body.token.length > 0) {
         token = body.token;
         hasToken = true;
       }
+      if (typeof body.exp === 'number') {
+        exp = body.exp;
+      }
     } catch {
       /* body not parseable as JSON — token stays empty */
     }
-    return { token, status: res.status, ok: res.ok, hasToken };
+    return { token, status: res.status, ok: res.ok, hasToken, exp };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ...EMPTY, err: msg.slice(0, 64) };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Cache-aware PAT probe. Checks sessionStorage for a non-expired token
+ * from a previous fetch; uses it if found, otherwise hits the network.
+ * Cache entries persist for the duration of the browser tab and survive
+ * SPA route changes / soft reloads, defeating iOS's per-origin PAT
+ * cooldown without forcing a fresh redemption on every page.
+ *
+ * The cache is opportunistic: any sessionStorage failure (private mode,
+ * quota, missing API) silently falls back to a direct network fetch.
+ */
+export async function getPatToken(
+  endpoint: string,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<PatProbeResult> {
+  const cached = readCache();
+  if (cached && cached.exp > nowSec()) {
+    return {
+      token: cached.token,
+      status: 200,
+      ok: true,
+      hasToken: true,
+      exp: cached.exp,
+    };
+  }
+  if (cached) {
+    // expired — clean it up rather than letting it linger
+    clearCache();
+  }
+  const result = await fetchPatProbe(endpoint, timeoutMs);
+  if (result.token && result.exp) {
+    writeCache({ exp: result.exp, token: result.token });
+  }
+  return result;
 }
 
 /**

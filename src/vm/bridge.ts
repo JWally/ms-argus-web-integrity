@@ -19,7 +19,7 @@ import {
   fetchTcpProbe,
   fetchH2Probe,
 } from '../utils/sigint';
-import { fetchPatProbe, diagString } from '../utils/pat';
+import { getPatToken, diagString } from '../utils/pat';
 import { getCryptoId } from '../utils/get-crypto-id';
 import { getClientUuid } from '../utils/get-client-uuid';
 import type { IntegrityResult } from '../integrity';
@@ -552,7 +552,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // forge the diagnostic. Loose-coupling: omit ctx.patEndpoint to skip
   // both entirely.
   const patPromise = ctx.patEndpoint
-    ? fetchPatProbe(ctx.patEndpoint).catch(() => ({
+    ? getPatToken(ctx.patEndpoint).catch(() => ({
         token: '',
         status: 0,
         ok: false,
