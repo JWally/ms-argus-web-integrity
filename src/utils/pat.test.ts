@@ -1,57 +1,102 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fetchPatToken } from './pat';
+import { fetchPatProbe, diagString } from './pat';
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('fetchPatToken', () => {
-  it('returns the token from a 200 redemption response', async () => {
+describe('fetchPatProbe', () => {
+  it('captures token + 200 ok on a redemption response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Response(JSON.stringify({ token: 'signed.blob' }), {
+            status: 200,
+          }),
+      ),
+    );
+    const r = await fetchPatProbe('https://api/pat-attestation');
+    expect(r).toEqual({
+      token: 'signed.blob',
+      status: 200,
+      ok: true,
+      hasToken: true,
+    });
+  });
+
+  it('captures status 401 with the challenge body (no redemption)', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
         () =>
           new Response(
-            JSON.stringify({ token: 'nonce.expiry.hmac', expiryMs: 1 }),
+            JSON.stringify({ challenge: 'abc', tokenKey: 'def', maxAge: 60 }),
+            { status: 401 },
           ),
       ),
     );
-    const out = await fetchPatToken('https://api/pat-attestation');
-    expect(out).toBe('nonce.expiry.hmac');
+    const r = await fetchPatProbe('https://api/pat-attestation');
+    expect(r).toEqual({
+      token: '',
+      status: 401,
+      ok: false,
+      hasToken: false,
+    });
   });
 
-  it('returns empty string on non-2xx (e.g. 401 challenge — iOS did not redeem)', async () => {
+  it('captures err when fetch throws', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        () =>
-          new Response(JSON.stringify({ challenge: 'abc' }), { status: 401 }),
-      ),
+      vi.fn(() => Promise.reject(new Error('NetworkError'))),
     );
-    expect(await fetchPatToken('https://api/pat-attestation')).toBe('');
+    const r = await fetchPatProbe('https://api/pat-attestation');
+    expect(r).toMatchObject({
+      token: '',
+      status: 0,
+      ok: false,
+      hasToken: false,
+      err: 'NetworkError',
+    });
   });
 
-  it('returns empty string on a body without a token field', async () => {
+  it('captures status with empty body when JSON parse fails', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => new Response(JSON.stringify({ unrelated: true }))),
+      vi.fn(() => new Response('<html>error</html>', { status: 502 })),
     );
-    expect(await fetchPatToken('https://api/pat-attestation')).toBe('');
+    const r = await fetchPatProbe('https://api/pat-attestation');
+    expect(r.token).toBe('');
+    expect(r.status).toBe(502);
+    expect(r.hasToken).toBe(false);
+  });
+});
+
+describe('diagString', () => {
+  it('omits err and token when there is none', () => {
+    const s = diagString({
+      token: 'x',
+      status: 200,
+      ok: true,
+      hasToken: true,
+    });
+    const obj = JSON.parse(s);
+    expect(obj).toEqual({ status: 200, ok: true, hasToken: true });
   });
 
-  it('returns empty string when fetch rejects (network error)', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.reject(new Error('ECONNREFUSED'))),
-    );
-    expect(await fetchPatToken('https://api/pat-attestation')).toBe('');
-  });
-
-  it('returns empty string when the response body is not JSON', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => new Response('<html>not json</html>')),
-    );
-    expect(await fetchPatToken('https://api/pat-attestation')).toBe('');
+  it('includes err when present', () => {
+    const s = diagString({
+      token: '',
+      status: 0,
+      ok: false,
+      hasToken: false,
+      err: 'TimeoutError',
+    });
+    expect(JSON.parse(s)).toEqual({
+      status: 0,
+      ok: false,
+      hasToken: false,
+      err: 'TimeoutError',
+    });
   });
 });

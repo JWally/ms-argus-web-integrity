@@ -74,6 +74,7 @@ function makeBridge(opts: {
   bridge.register(BridgeApi.FETCH_TCP_PROBE, { call: async () => '' });
   bridge.register(BridgeApi.FETCH_H2_PROBE, { call: async () => '' });
   bridge.register(BridgeApi.FETCH_PAT_TOKEN, { call: async () => '' });
+  bridge.register(BridgeApi.FETCH_PAT_DIAG, { call: async () => '' });
 
   // ECDH: pretend we can generate keys and derive an "encrypted" buffer
   bridge.register(BridgeApi.ECDH_GENERATE_KEY, {

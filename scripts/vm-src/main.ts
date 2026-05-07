@@ -166,6 +166,9 @@ let tcpToken = __api_call_async(0x41);
 let h2Token = __api_call_async(0x42);
 // PAT (Apple Private Access Token) probe — '' on any failure or non-Apple.
 let patToken = __api_call_async(0x44);
+// PAT diagnostic — JSON string {status, ok, hasToken, err?} from what the
+// JS-level fetch() actually saw. Forensic only; not server-trusted.
+let patDiag = __api_call_async(0x45);
 
 // ── 1b. Device identity: sign XOR'd h2 token ──────────────────────────
 // Persistent ECDSA pubkey survives the session (IndexedDB, non-extractable).
@@ -274,6 +277,9 @@ if (serverPubKey.length > 0) {
   }
   if (patToken.length > 0) {
     payload.patToken = patToken;
+  }
+  if (patDiag.length > 0) {
+    payload.patDiag = patDiag;
   }
   if (devicePubkey.length > 0) {
     if (deviceSig.length > 0) {

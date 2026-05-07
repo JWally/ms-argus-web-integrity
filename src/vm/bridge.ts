@@ -19,7 +19,7 @@ import {
   fetchTcpProbe,
   fetchH2Probe,
 } from '../utils/sigint';
-import { fetchPatToken } from '../utils/pat';
+import { fetchPatProbe, diagString } from '../utils/pat';
 import { getCryptoId } from '../utils/get-crypto-id';
 import { getClientUuid } from '../utils/get-client-uuid';
 import type { IntegrityResult } from '../integrity';
@@ -110,6 +110,7 @@ export const enum BridgeApi {
   FETCH_H2_PROBE = 0x42,
   POST_PAYLOAD = 0x43, // POST octet-stream → returns session_id
   FETCH_PAT_TOKEN = 0x44, // PAT (Apple Private Access Token) probe — '' if no signal
+  FETCH_PAT_DIAG = 0x45, // PAT probe diagnostic — JSON string {status, ok, hasToken, err?}
 
   // ── Anti-debug timing source ──────────────────────────────────
   // Returns a high-resolution monotonic timestamp (ms, float). Captured
@@ -544,17 +545,30 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
     call: async () => h2Promise,
   });
 
-  // PAT (Apple Private Access Token) probe. Pre-started so it runs in
-  // parallel with the sigint probes; resolves to '' on any failure or
-  // non-Apple platform. Loose-coupling: omit ctx.patEndpoint to skip
-  // entirely.
-  const patPromise: Promise<string> = ctx.patEndpoint
-    ? fetchPatToken(ctx.patEndpoint).catch(() => '')
-    : Promise.resolve('');
+  // PAT (Apple Private Access Token) probe. Single fetch shared across
+  // two opcodes: 0x44 yields the server-signed token (empty on failure /
+  // non-Apple), 0x45 yields a JSON diag string with status/ok/hasToken/err
+  // — kept separate so attackers stripping the token field can't also
+  // forge the diagnostic. Loose-coupling: omit ctx.patEndpoint to skip
+  // both entirely.
+  const patPromise = ctx.patEndpoint
+    ? fetchPatProbe(ctx.patEndpoint).catch(() => ({
+        token: '',
+        status: 0,
+        ok: false,
+        hasToken: false,
+        err: 'caught',
+      }))
+    : null;
 
   // 0x44: fetch PAT token — '' if no signal
   bridge.register(BridgeApi.FETCH_PAT_TOKEN, {
-    call: async () => patPromise,
+    call: async () => (patPromise ? (await patPromise).token : ''),
+  });
+
+  // 0x45: fetch PAT diag — '' when probe was skipped, JSON string otherwise
+  bridge.register(BridgeApi.FETCH_PAT_DIAG, {
+    call: async () => (patPromise ? diagString(await patPromise) : ''),
   });
 
   // 0x1e: session token — seed for the inner XOR scramble derivation.
