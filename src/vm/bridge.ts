@@ -19,6 +19,7 @@ import {
   fetchTcpProbe,
   fetchH2Probe,
 } from '../utils/sigint';
+import { fetchPatToken } from '../utils/pat';
 import { getCryptoId } from '../utils/get-crypto-id';
 import { getClientUuid } from '../utils/get-client-uuid';
 import type { IntegrityResult } from '../integrity';
@@ -108,6 +109,7 @@ export const enum BridgeApi {
   FETCH_TCP_PROBE = 0x41,
   FETCH_H2_PROBE = 0x42,
   POST_PAYLOAD = 0x43, // POST octet-stream → returns session_id
+  FETCH_PAT_TOKEN = 0x44, // PAT (Apple Private Access Token) probe — '' if no signal
 
   // ── Anti-debug timing source ──────────────────────────────────
   // Returns a high-resolution monotonic timestamp (ms, float). Captured
@@ -166,6 +168,13 @@ export interface ArgusVmContext {
   sigintConfig?: SigintConfig;
   /** POST target, e.g. "https://api.argus.pw/v1/integrity-collect" */
   apiEndpoint: string;
+  /**
+   * Optional PAT attestation endpoint, e.g.
+   * "https://api.argus.pw/v1/pat-attestation". If absent or unreachable,
+   * the PAT signal is silently omitted from the payload. Apple-only;
+   * non-iOS clients always resolve to no signal.
+   */
+  patEndpoint?: string;
   /** Opaque session correlation token — forwarded as X-Argus-Session */
   sessionToken: string;
   /** Pre-started h2-probe token promise — reused to avoid a duplicate fetch */
@@ -533,6 +542,19 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // 0x42: fetch H2 probe — awaits pre-started promise
   bridge.register(BridgeApi.FETCH_H2_PROBE, {
     call: async () => h2Promise,
+  });
+
+  // PAT (Apple Private Access Token) probe. Pre-started so it runs in
+  // parallel with the sigint probes; resolves to '' on any failure or
+  // non-Apple platform. Loose-coupling: omit ctx.patEndpoint to skip
+  // entirely.
+  const patPromise: Promise<string> = ctx.patEndpoint
+    ? fetchPatToken(ctx.patEndpoint).catch(() => '')
+    : Promise.resolve('');
+
+  // 0x44: fetch PAT token — '' if no signal
+  bridge.register(BridgeApi.FETCH_PAT_TOKEN, {
+    call: async () => patPromise,
   });
 
   // 0x1e: session token — seed for the inner XOR scramble derivation.

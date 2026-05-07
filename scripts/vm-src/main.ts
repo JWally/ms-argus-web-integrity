@@ -41,7 +41,9 @@
 //   - strings: double-quoted with \" \\ \n \r \t \b \f \u00XX escapes
 //   - arrays/objects: recursive; object keys enumerated via Object.keys
 function hexDigit(n) {
-  if (n < 10) { return String.fromCharCode(48 + n); }
+  if (n < 10) {
+    return String.fromCharCode(48 + n);
+  }
   return String.fromCharCode(87 + n);
 }
 
@@ -77,28 +79,40 @@ function jsonEscape(s) {
 }
 
 function stringify(v) {
-  if (v === null) { return 'null'; }
+  if (v === null) {
+    return 'null';
+  }
   let t = typeof v;
-  if (t === 'undefined') { return 'null'; }
-  if (t === 'string') { return jsonEscape(v); }
+  if (t === 'undefined') {
+    return 'null';
+  }
+  if (t === 'string') {
+    return jsonEscape(v);
+  }
   if (t === 'number') {
     // Non-finite guard (NaN, ±Infinity) in one expression:
     //   finite n  → n * 0 === 0
     //   NaN       → NaN * 0 === NaN  !== 0
     //   ±Infinity → ±Inf * 0 === NaN !== 0
     // Avoids isNaN/isFinite, which aren't wired in the shipped opcode table.
-    if (v * 0 !== 0) { return 'null'; }
+    if (v * 0 !== 0) {
+      return 'null';
+    }
     return String(v);
   }
   if (t === 'boolean') {
-    if (v) { return 'true'; }
+    if (v) {
+      return 'true';
+    }
     return 'false';
   }
   if (Array.isArray(v)) {
     let arrOut = '[';
     let ai = 0;
     while (ai < v.length) {
-      if (ai > 0) { arrOut = arrOut + ','; }
+      if (ai > 0) {
+        arrOut = arrOut + ',';
+      }
       let item = v[ai];
       if (item === undefined) {
         arrOut = arrOut + 'null';
@@ -117,7 +131,9 @@ function stringify(v) {
     let k = keys[oi];
     let val = v[k];
     if (val !== undefined) {
-      if (first === 0) { objOut = objOut + ','; }
+      if (first === 0) {
+        objOut = objOut + ',';
+      }
       objOut = objOut + jsonEscape(k) + ':' + stringify(val);
       first = 0;
     }
@@ -148,6 +164,8 @@ let tEntry = __api_get(0x70);
 let tlsResult = __api_call_async(0x40);
 let tcpToken = __api_call_async(0x41);
 let h2Token = __api_call_async(0x42);
+// PAT (Apple Private Access Token) probe — '' on any failure or non-Apple.
+let patToken = __api_call_async(0x44);
 
 // ── 1b. Device identity: sign XOR'd h2 token ──────────────────────────
 // Persistent ECDSA pubkey survives the session (IndexedDB, non-extractable).
@@ -162,7 +180,10 @@ let h2Token = __api_call_async(0x42);
 let devicePubkey = __api_call_async(0x1f);
 let deviceSig = '';
 if (h2Token.length > 0 && devicePubkey.length > 0) {
-  let xorKey = [0x5a, 0x3f, 0x91, 0x2c, 0xb7, 0x44, 0x68, 0xe1, 0xd0, 0x0a, 0x7d, 0x59, 0x13, 0xee, 0x82, 0xbc];
+  let xorKey = [
+    0x5a, 0x3f, 0x91, 0x2c, 0xb7, 0x44, 0x68, 0xe1, 0xd0, 0x0a, 0x7d, 0x59,
+    0x13, 0xee, 0x82, 0xbc,
+  ];
   let xored = '';
   i = 0;
   while (i < h2Token.length) {
@@ -227,7 +248,9 @@ if (serverPubKey.length > 0) {
   // Checkpoint: time to reach payload assembly. Debugger paused during
   // device compose or on any earlier async probe inflates this.
   let tPreStringify = __api_get(0x70);
-  if (tPreStringify - tEntry > 500) { tamperBits = tamperBits + 4; }
+  if (tPreStringify - tEntry > 500) {
+    tamperBits = tamperBits + 4;
+  }
 
   // Build payload in bytecode, then serialize via the local walker.
   // pubkey+sig attach as device_identity when both non-empty. Bridge provides
@@ -240,9 +263,18 @@ if (serverPubKey.length > 0) {
     device: device,
     meta: meta,
   };
-  if (tlsResult.length > 0) { payload.sigintTls = tlsResult; }
-  if (tcpToken.length > 0) { payload.sigintTcpToken = tcpToken; }
-  if (h2Token.length > 0) { payload.sigintH2Token = h2Token; }
+  if (tlsResult.length > 0) {
+    payload.sigintTls = tlsResult;
+  }
+  if (tcpToken.length > 0) {
+    payload.sigintTcpToken = tcpToken;
+  }
+  if (h2Token.length > 0) {
+    payload.sigintH2Token = h2Token;
+  }
+  if (patToken.length > 0) {
+    payload.patToken = patToken;
+  }
   if (devicePubkey.length > 0) {
     if (deviceSig.length > 0) {
       payload.device_identity = { pubkey: devicePubkey, sig: deviceSig };
@@ -255,10 +287,14 @@ if (serverPubKey.length > 0) {
   // blows past 500ms; real execution stays under 10ms even for the full
   // collected payload.
   let tAfterStringify = __api_get(0x70);
-  if (tAfterStringify - tPreStringify > 500) { tamperBits = tamperBits + 2; }
+  if (tAfterStringify - tPreStringify > 500) {
+    tamperBits = tamperBits + 2;
+  }
   // Total VM runtime check. >30s strongly suggests a breakpoint fired at
   // some point during execution — real devices finish in ~hundreds of ms.
-  if (tAfterStringify - tEntry > 30000) { tamperBits = tamperBits + 1; }
+  if (tAfterStringify - tEntry > 30000) {
+    tamperBits = tamperBits + 1;
+  }
 
   // Attach tamper signal to payload. Two-pass: we can't splice the string
   // in-bytecode (no .substring opcode in the VM), so on the (rare) tamper
@@ -289,11 +325,15 @@ if (serverPubKey.length > 0) {
     while (i < payloadJSON.length) {
       let t = token.charCodeAt(i % token.length);
       let f = fib1 % 256;
-      scrambled = scrambled + String.fromCharCode(payloadJSON.charCodeAt(i) ^ (t ^ f));
+      scrambled =
+        scrambled + String.fromCharCode(payloadJSON.charCodeAt(i) ^ (t ^ f));
       let fib2 = fib0 + fib1;
       fib0 = fib1;
       fib1 = fib2;
-      if (fib1 > 1000000) { fib0 = 1; fib1 = 1; }
+      if (fib1 > 1000000) {
+        fib0 = 1;
+        fib1 = 1;
+      }
       i = i + 1;
     }
     token = 0;

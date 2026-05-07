@@ -196,6 +196,7 @@ export async function runArgusVm(
       getServerPubKey: () => handshake.serverPubKey,
       sigintConfig,
       apiEndpoint: `${apiBase}/v1/integrity-collect`,
+      patEndpoint: `${apiBase}/v1/pat-attestation`,
       sessionToken: handshake.sessionToken,
       h2Promise: _prefetchH2Slot ?? undefined,
       onSubmissionError: (detail) => {
