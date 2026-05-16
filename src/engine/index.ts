@@ -272,6 +272,17 @@ const ERROR_TRIGGERS: Array<() => void> = [
   // SyntaxError — V8: "Identifier 'a' has already been declared"
   //               SM: "redeclaration of const a"
   () => new Function('const a=1; const a=2;')(),
+
+  // TypeError — cyclic prototype chain. Each engine words this slightly
+  // differently and capitalizes it differently:
+  //   V8:           "Cyclic __proto__ value"
+  //   SpiderMonkey: "cyclic __proto__ value" (or "can't set the [[Prototype]] of an object to itself")
+  //   JSC:          "cyclic __proto__ value"
+  // The error path is exercised deep in the C++ engine — same C++-level
+  // signal as null.foo, just a different code path, so it catches engines
+  // that have hand-patched the common error messages but missed this one.
+  // Inspired by Castle's tag-0xc4 "thrown-error dialect" probe (Castle.md §4.4).
+  () => new Function('const o = {}; Object.setPrototypeOf(o, o);')(),
 ];
 
 function collectErrorMessages(fns: Array<() => void>): string[] {

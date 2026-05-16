@@ -94,6 +94,42 @@ function validateDevicePixelRatio(dpr: number): boolean {
 }
 
 /**
+ * Discovers the actual devicePixelRatio via matchMedia binary search.
+ *
+ * `validateDevicePixelRatio` above only asks "does the *reported* DPR
+ * round-trip through matchMedia?". A spoofer who patches
+ * `window.devicePixelRatio` but leaves the CSS engine untouched can
+ * survive that check if they spoof to a value that doesn't round-trip
+ * cleanly — `(resolution: X dppx)` is an exact match and brittle.
+ *
+ * This routine instead brackets the real DPR with `(max-resolution: X
+ * dppx)` queries, which the CSS engine answers honestly regardless of
+ * what JS reports. After ~12 iterations the bracket has ~0.001
+ * precision — much finer than the gap between any legitimate adjacent
+ * DPR values. The server compares the returned value against the
+ * reported `devicePixelRatio` and treats a gap as a tamper signal.
+ *
+ * Technique borrowed from Castle's matchMedia probe (Castle.md §3.3 /
+ * §4.3) — they do the same 41-step search across DPI but the dppx
+ * variant is equivalent and one fewer unit-conversion to reason about.
+ *
+ * @returns Midpoint of the converged bracket, ≈ the real DPR
+ */
+function searchDevicePixelRatio(): number {
+  let lo = 0.5;
+  let hi = 5;
+  for (let i = 0; i < 12; i++) {
+    const mid = (lo + hi) / 2;
+    if (topWin.matchMedia(`(max-resolution: ${mid}dppx)`).matches) {
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+  return (lo + hi) / 2;
+}
+
+/**
  * Checks for missing taskbar space on large screens.
  *
  * On screens larger than 800px, operating systems typically show a
@@ -131,6 +167,66 @@ function hasNoTaskbar(
  *
  * @returns True if any screen property was tampered with
  */
+/**
+ * Collects viewport, window, visual-viewport, orientation, and zoom-estimate
+ * fields. Read separately from screen.* because these reflect the *browser
+ * window* state, not the device — and they shift with zoom while screen.* stays
+ * fixed. Three independent zoom estimates are recorded so divergence between
+ * them flags a tampered environment.
+ */
+function collectViewport(
+  dpr: number,
+  screenWidth: number,
+): Partial<ScreenFingerprint> {
+  try {
+    const innerWidth = topWin.innerWidth;
+    const innerHeight = topWin.innerHeight;
+    const outerWidth = topWin.outerWidth;
+    const outerHeight = topWin.outerHeight;
+
+    let visualViewportScale: number | null = null;
+    let visualViewportWidth: number | null = null;
+    let visualViewportHeight: number | null = null;
+    try {
+      const vv = topWin.visualViewport;
+      if (vv) {
+        visualViewportScale = vv.scale ?? null;
+        visualViewportWidth = vv.width ?? null;
+        visualViewportHeight = vv.height ?? null;
+      }
+    } catch {}
+
+    let orientation: string | null = null;
+    try {
+      orientation = topWin.screen?.orientation?.type ?? null;
+    } catch {}
+
+    const clientWidth = topWin.document?.documentElement?.clientWidth ?? 0;
+    const outerInnerRatio =
+      outerWidth && innerWidth ? outerWidth / innerWidth : null;
+    const screenClientRatio =
+      screenWidth && clientWidth ? screenWidth / clientWidth : null;
+
+    return {
+      innerWidth,
+      innerHeight,
+      outerWidth,
+      outerHeight,
+      visualViewportScale,
+      visualViewportWidth,
+      visualViewportHeight,
+      orientation,
+      zoomEstimate: {
+        dpr,
+        outerInnerRatio,
+        screenClientRatio,
+      },
+    };
+  } catch {
+    return {};
+  }
+}
+
 function detectScreenLies(): boolean {
   return !!(
     lieProps['Screen.width'] ||
@@ -193,6 +289,13 @@ export default async function getScreen(
       documentLie('Window.devicePixelRatio', 'lied dpr');
     }
 
+    // Independent DPR discovery via max-resolution binary search.
+    // Emitted raw so the server can compare against `dpr` regardless of
+    // what client-side validation concludes. WebKit has the same
+    // matchMedia/DPR quirks that gate the strict check above; the
+    // server is expected to apply the same exemption when scoring drift.
+    const dprFromMedia = searchDevicePixelRatio();
+
     // Flag missing taskbar on large screens as suspicious
     if (hasNoTaskbar(width, height, availWidth, availHeight)) {
       LowerEntropy.SCREEN = true;
@@ -207,6 +310,8 @@ export default async function getScreen(
       pixelDepth,
       touch: hasTouch(),
       lied,
+      dprFromMedia,
+      ...collectViewport(dpr, width),
     };
 
     log && logTestResult({ time: timer.stop(), test: 'screen', passed: true });
