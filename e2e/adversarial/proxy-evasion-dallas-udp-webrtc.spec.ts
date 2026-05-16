@@ -31,8 +31,14 @@ const CHAIN_HOST = process.env.PROXY_HOST || '127.0.0.1';
 async function chainUp(): Promise<boolean> {
   return new Promise((resolve) => {
     const s = net.createConnection({ host: CHAIN_HOST, port: CHAIN_PORT });
-    s.once('connect', () => { s.destroy(); resolve(true); });
-    s.once('error', () => { s.destroy(); resolve(false); });
+    s.once('connect', () => {
+      s.destroy();
+      resolve(true);
+    });
+    s.once('error', () => {
+      s.destroy();
+      resolve(false);
+    });
   });
 }
 
@@ -101,13 +107,14 @@ test.describe('adversarial: dallas via SOCKS5 + UDP WebRTC', () => {
         { timeout: 5_000 },
       );
       const merchantSessionId = `bot-udp-webrtc-${Date.now()}`;
+      const cpi = process.env.ARGUS_TEST_CPI;
       const result = (await page.evaluate(
-        async ({ sid, to }) => {
+        async ({ sid, to, c }) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const argus = (window as any).argus;
-          return await argus.run({ sessionId: sid, timeoutMs: to });
+          return await argus.run({ sessionId: sid, timeoutMs: to, cpi: c });
         },
-        { sid: merchantSessionId, to: 30_000 },
+        { sid: merchantSessionId, to: 30_000, c: cpi },
       )) as LoaderRunResult;
 
       const record = await fetchAdversarialRecord(result.argusSessionId);
