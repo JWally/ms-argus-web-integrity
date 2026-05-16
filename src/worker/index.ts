@@ -120,17 +120,31 @@ const getStorageEstimate = async () => {
 };
 
 const getMediaCapabilities = async () => {
+  // Mirrors collect.ts getMediaCapabilities — keep in sync. 12 codec configs
+  // (FPJS.md §4.6 parity + AAC). Keys include resolution/channels so multiple
+  // configs of the same codec don't collide.
   try {
     if (!navigator.mediaCapabilities) return null;
     const configs = [
       { type: 'file', video: { contentType: 'video/webm; codecs="vp8"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
       { type: 'file', video: { contentType: 'video/webm; codecs="vp9"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
+      { type: 'file', video: { contentType: 'video/webm; codecs="vp9"', width: 3840, height: 2160, bitrate: 30000000, framerate: 60 } },
+      { type: 'file', video: { contentType: 'video/mp4; codecs="avc1.42E01E"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
+      { type: 'file', video: { contentType: 'video/mp4; codecs="avc1.640028"', width: 1920, height: 1080, bitrate: 6000000, framerate: 30 } },
+      { type: 'file', video: { contentType: 'video/mp4; codecs="hev1.1.6.L93.B0"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
+      { type: 'file', video: { contentType: 'video/mp4; codecs="hvc1.2.4.L120.B0"', width: 3840, height: 2160, bitrate: 30000000, framerate: 60 } },
+      { type: 'file', video: { contentType: 'video/mp4; codecs="av01.0.05M.08"', width: 1920, height: 1080, bitrate: 2000000, framerate: 30 } },
+      { type: 'file', video: { contentType: 'video/mp4; codecs="av01.0.13M.08"', width: 3840, height: 2160, bitrate: 30000000, framerate: 60 } },
       { type: 'file', audio: { contentType: 'audio/webm; codecs="opus"', channels: 2, bitrate: 128000, samplerate: 48000 } },
+      { type: 'file', audio: { contentType: 'audio/webm; codecs="opus"', channels: 6, bitrate: 510000, samplerate: 48000 } },
+      { type: 'file', audio: { contentType: 'audio/mp4; codecs="mp4a.40.2"', channels: 2, bitrate: 128000, samplerate: 44100 } },
     ];
     const results = {};
     for (const cfg of configs) {
       try {
-        const key = cfg.video ? cfg.video.contentType : cfg.audio.contentType;
+        const key = cfg.video
+          ? cfg.video.contentType + ' @ ' + cfg.video.width + 'x' + cfg.video.height + '/' + cfg.video.framerate + 'fps'
+          : cfg.audio.contentType + ' @ ' + cfg.audio.channels + 'ch/' + cfg.audio.samplerate + 'Hz';
         const r = await navigator.mediaCapabilities.decodingInfo(cfg);
         results[key] = { supported: r.supported, smooth: r.smooth, powerEfficient: r.powerEfficient };
       } catch {}

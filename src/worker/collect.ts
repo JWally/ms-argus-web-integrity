@@ -178,7 +178,14 @@ export async function getStorageEstimate(): Promise<{
 }
 
 /**
- * Probes media decoding capabilities for fingerprinting.
+ * Probes media decoding capabilities for fingerprinting. The codec matrix
+ * mirrors FPJS v4's 11-entry probe set (FPJS.md §4.6) plus AAC for further
+ * licensing-fragmentation entropy. The `powerEfficient` flag in each result
+ * surfaces hardware-decode availability — stable per (GPU, OS) and very hard
+ * to fake in headless / VM environments.
+ *
+ * Keys include resolution (or channels) so multiple configs of the same codec
+ * (e.g. VP9 1080p30 vs 4K60) don't collide.
  */
 export async function getMediaCapabilities(): Promise<Record<
   string,
@@ -187,6 +194,7 @@ export async function getMediaCapabilities(): Promise<Record<
   try {
     if (!(navigator as any).mediaCapabilities) return null;
     const configs = [
+      // VP8 1080p30 (legacy webm, broad support)
       {
         type: 'file' as const,
         video: {
@@ -197,6 +205,7 @@ export async function getMediaCapabilities(): Promise<Record<
           framerate: 30,
         },
       },
+      // VP9 1080p30 (current webm)
       {
         type: 'file' as const,
         video: {
@@ -207,6 +216,84 @@ export async function getMediaCapabilities(): Promise<Record<
           framerate: 30,
         },
       },
+      // VP9 4K60 high-bitrate (hardware-decode discriminator)
+      {
+        type: 'file' as const,
+        video: {
+          contentType: 'video/webm; codecs="vp9"',
+          width: 3840,
+          height: 2160,
+          bitrate: 30000000,
+          framerate: 60,
+        },
+      },
+      // H.264 baseline 1080p30 (broadest profile)
+      {
+        type: 'file' as const,
+        video: {
+          contentType: 'video/mp4; codecs="avc1.42E01E"',
+          width: 1920,
+          height: 1080,
+          bitrate: 2000000,
+          framerate: 30,
+        },
+      },
+      // H.264 high 1080p30 (Chromium-with-proprietary vs open Chromium)
+      {
+        type: 'file' as const,
+        video: {
+          contentType: 'video/mp4; codecs="avc1.640028"',
+          width: 1920,
+          height: 1080,
+          bitrate: 6000000,
+          framerate: 30,
+        },
+      },
+      // HEVC main 1080p30 (Mac/Win OS-licensed; Linux often missing)
+      {
+        type: 'file' as const,
+        video: {
+          contentType: 'video/mp4; codecs="hev1.1.6.L93.B0"',
+          width: 1920,
+          height: 1080,
+          bitrate: 2000000,
+          framerate: 30,
+        },
+      },
+      // HEVC main10 4K60 (HDR; Apple Silicon / recent Win HW)
+      {
+        type: 'file' as const,
+        video: {
+          contentType: 'video/mp4; codecs="hvc1.2.4.L120.B0"',
+          width: 3840,
+          height: 2160,
+          bitrate: 30000000,
+          framerate: 60,
+        },
+      },
+      // AV1 main 1080p30 (modern silicon: M3+, Intel 11th-gen+, Zen3+)
+      {
+        type: 'file' as const,
+        video: {
+          contentType: 'video/mp4; codecs="av01.0.05M.08"',
+          width: 1920,
+          height: 1080,
+          bitrate: 2000000,
+          framerate: 30,
+        },
+      },
+      // AV1 4K60 (very recent silicon)
+      {
+        type: 'file' as const,
+        video: {
+          contentType: 'video/mp4; codecs="av01.0.13M.08"',
+          width: 3840,
+          height: 2160,
+          bitrate: 30000000,
+          framerate: 60,
+        },
+      },
+      // Opus stereo 48k (existing webm baseline)
       {
         type: 'file' as const,
         audio: {
@@ -216,6 +303,26 @@ export async function getMediaCapabilities(): Promise<Record<
           samplerate: 48000,
         },
       },
+      // Opus 5.1 high-bitrate (mobile fragmented)
+      {
+        type: 'file' as const,
+        audio: {
+          contentType: 'audio/webm; codecs="opus"',
+          channels: 6,
+          bitrate: 510000,
+          samplerate: 48000,
+        },
+      },
+      // AAC LC stereo 44.1k (OS-licensed; Linux often missing)
+      {
+        type: 'file' as const,
+        audio: {
+          contentType: 'audio/mp4; codecs="mp4a.40.2"',
+          channels: 2,
+          bitrate: 128000,
+          samplerate: 44100,
+        },
+      },
     ];
     const results: Record<
       string,
@@ -223,7 +330,9 @@ export async function getMediaCapabilities(): Promise<Record<
     > = {};
     for (const cfg of configs) {
       try {
-        const key = cfg.video ? cfg.video.contentType : cfg.audio!.contentType;
+        const key = cfg.video
+          ? `${cfg.video.contentType} @ ${cfg.video.width}x${cfg.video.height}/${cfg.video.framerate}fps`
+          : `${cfg.audio!.contentType} @ ${cfg.audio!.channels}ch/${cfg.audio!.samplerate}Hz`;
         const r = await (navigator as any).mediaCapabilities.decodingInfo(cfg);
         results[key] = {
           supported: r.supported,
