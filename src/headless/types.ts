@@ -93,6 +93,31 @@ export interface StealthSignals {
 }
 
 /**
+ * Console-serialization timing — CDP attach detector.
+ *
+ * When a CDP client is attached and `Runtime.enable` has been issued,
+ * Chrome serializes every console.* argument over the wire. The cost
+ * scales with structural complexity, so a deep object is much slower
+ * to log than a 1-byte string. Without CDP, both are dropped at the
+ * same near-zero cost.
+ *
+ * `heavy_over_tiny` is the headline ratio (≳2 under CDP, ≈1 without).
+ * Absolute fields are kept for telemetry/threshold tuning.
+ *
+ * Blink-only — Gecko/WebKit use different debugger protocols.
+ */
+export interface ConsoleTiming {
+  /** µs/call for `console.log("a")` over 1000 calls. */
+  log_tiny_us: number;
+  /** µs/call for `console.log(heavyObject)` over 1000 calls. */
+  log_heavy_us: number;
+  /** µs/call for `console.dir(heavyObject)` over 1000 calls. */
+  dir_heavy_us: number;
+  /** log_heavy_us / log_tiny_us. ≳2 under CDP, ≈1 without. */
+  heavy_over_tiny: number;
+}
+
+/**
  * CDP / automation framework detection signals.
  */
 export interface CdpSignals {
@@ -108,6 +133,8 @@ export interface CdpSignals {
   automationGlobals: string[];
   /** APIs where cross-realm toString disagrees with main frame — addInitScript patching */
   crossRealmTampered: string[];
+  /** Console-serialization timing bench. Absent on non-Blink. */
+  consoleTiming?: ConsoleTiming;
 }
 
 export type PlatformScores = Record<string, number>;
