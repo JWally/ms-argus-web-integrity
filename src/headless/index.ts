@@ -39,6 +39,7 @@ import { CHROME_INDEX_RANGE } from './constants';
 // users whose browsers happen to be windowed inside the iframe's
 // perspective. No-op when at top-level.
 const topWin = getTopSameOriginWindow();
+import getConsoleTiming from './getConsoleTiming';
 import getPlatformEstimate from './getPlatformEstimate';
 import { getSystemFonts } from './getSystemFonts';
 import type {
@@ -453,6 +454,7 @@ function detectCdp(): CdpSignals {
     clientLitter: checkClientLitter(),
     automationGlobals: checkAutomationGlobals(),
     crossRealmTampered: detectCrossRealmTampering(),
+    consoleTiming: getConsoleTiming(),
   };
 }
 
