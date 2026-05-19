@@ -342,14 +342,100 @@ export const API_SEARCH_TARGETS: Array<{
   // Text Metrics
   { api: 'TextMetrics', target: undefined },
 
-  // WebGL APIs - critical for WebGL fingerprinting
+  // WebGL APIs - critical for WebGL fingerprinting.
+  // getExtension/getSupportedExtensions/getShaderPrecisionFormat are
+  // called by the worker fingerprint collector (worker/index.ts) to read
+  // the renderer string and precision tables; bots that don't fake the
+  // renderer routinely stub these to dodge the cross-thread divergence
+  // check, so they need to be scanned for tampering.
   {
     api: 'WebGLRenderingContext',
-    target: ['bufferData', 'getParameter', 'readPixels'],
+    target: [
+      'bufferData',
+      'getParameter',
+      'readPixels',
+      'getExtension',
+      'getSupportedExtensions',
+      'getShaderPrecisionFormat',
+    ],
   },
   {
     api: 'WebGL2RenderingContext',
-    target: ['bufferData', 'getParameter', 'readPixels'],
+    target: [
+      'bufferData',
+      'getParameter',
+      'readPixels',
+      'getExtension',
+      'getSupportedExtensions',
+      'getShaderPrecisionFormat',
+    ],
+  },
+
+  // Crypto APIs — the SDK signs the integrity envelope and derives feature
+  // hashes through `crypto.subtle.sign/digest/encrypt` (vm/bridge.ts,
+  // utils/crypto.ts). A no-op or constant-return patch would not show up
+  // in any other scan target. Real users never have these tampered.
+  {
+    api: 'Crypto',
+    target: ['getRandomValues', 'randomUUID', 'subtle'],
+  },
+  {
+    api: 'SubtleCrypto',
+    target: [
+      'digest',
+      'sign',
+      'verify',
+      'encrypt',
+      'decrypt',
+      'generateKey',
+      'importKey',
+      'exportKey',
+      'deriveBits',
+      'deriveKey',
+    ],
+  },
+
+  // JSON — feature-hash canonicalization and payload serialization run
+  // through JSON.stringify (utils/crypto.ts). Patching to drop keys would
+  // silently change the wire fingerprint without surfacing in any other
+  // signal. JSON is not legitimately patched by any browser extension.
+  {
+    api: 'JSON',
+    target: ['stringify', 'parse'],
+  },
+
+  // Text encoders — key derivation in utils/crypto.ts converts strings to
+  // bytes via TextEncoder before hashing. A patched encoder returning
+  // empty buffers corrupts every downstream HMAC.
+  {
+    api: 'TextEncoder',
+    target: ['encode', 'encodeInto', 'encoding'],
+  },
+  {
+    api: 'TextDecoder',
+    target: ['decode', 'encoding'],
+  },
+
+  // Console — the CDP-attach detector in headless/getConsoleTiming.ts
+  // benches `console.log` vs `console.log(heavyObj)` to measure V8
+  // inspector serialization cost. A bot that replaces `console.log` with
+  // a JS no-op disconnects the inspector path and collapses the ratio to
+  // ~1. We scan both the instance (lowercase `console` — catches own-
+  // property shadowing like `console.log = noop`) and the `Console`
+  // constructor's prototype (catches prototype-level patches).
+  //
+  // FP risk: some browser extensions (uBlock Origin, password managers)
+  // patch `console.log` to filter their own noise. Track lie counts from
+  // real telemetry before raising the projection tier on console-only
+  // lies. The current ladder (lies>=1 → tampering=25) already absorbs a
+  // small number of extension-induced lies without producing a block.
+  {
+    api: 'console',
+    target: ['log', 'warn', 'error', 'info', 'debug', 'dir', 'trace', 'table'],
+  },
+  {
+    api: 'Console',
+    target: ['log', 'warn', 'error', 'info', 'debug', 'dir', 'trace', 'table'],
   },
 ];
 
