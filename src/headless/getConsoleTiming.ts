@@ -168,6 +168,22 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
   const conLogNative = isNativeFunction(con.log, win);
   const conDirNative = isNativeFunction(con.dir, win);
 
+  // Second clock for cross-verification: DocumentTimeline.currentTime.
+  // Same DOMHighResTimeStamp scale as performance.now(), but lives on a
+  // completely different prototype chain (DocumentTimeline.prototype.
+  // currentTime, a getter). An attacker who patches `Performance.prototype.
+  // now` only — every red-team round so far — leaves this clock untouched.
+  // If the two clocks disagree on the wall-clock cost of the same loop,
+  // one of them is lying.
+  //
+  // Falls back to perf.now() when DocumentTimeline isn't available (older
+  // browsers); the divergence check is then meaningless and stays at 0.
+  const timeline = win.document?.timeline;
+  const tlNow = (): number =>
+    typeof timeline?.currentTime === 'number'
+      ? timeline.currentTime
+      : perf.now();
+
   try {
     // Warm up to amortize V8 JIT and any cold-cache cost.
     for (let i = 0; i < 100; i++) con.log('warmup');
@@ -176,9 +192,16 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
     for (let i = 0; i < N; i++) con.log('a');
     const t1 = perf.now();
 
+    // Heavy loop is the highest-signal bucket — under CDP it takes ~60ms
+    // for N=1000 console.log(heavyObj) calls, ~7ms without. That's the
+    // window where a fake perf.now most visibly diverges from real wall
+    // time. We bracket only this loop with the timeline clock to keep
+    // overhead low.
     const t2 = perf.now();
+    const tl2 = tlNow();
     for (let i = 0; i < N; i++) con.log(HEAVY);
     const t3 = perf.now();
+    const tl3 = tlNow();
 
     const t4 = perf.now();
     for (let i = 0; i < N; i++) con.dir(HEAVY);
@@ -187,11 +210,13 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
     const logTinyUs = ((t1 - t0) * 1000) / N;
     const logHeavyUs = ((t3 - t2) * 1000) / N;
     const dirHeavyUs = ((t5 - t4) * 1000) / N;
+    const tlHeavyUs = ((tl3 - tl2) * 1000) / N;
 
     return {
       log_tiny_us: round2(logTinyUs),
       log_heavy_us: round2(logHeavyUs),
       dir_heavy_us: round2(dirHeavyUs),
+      tl_heavy_us: round2(tlHeavyUs),
       heavy_over_tiny: round2(logHeavyUs / Math.max(logTinyUs, 0.01)),
       perf_now_native: perfNowNative,
       date_now_native: dateNowNative,

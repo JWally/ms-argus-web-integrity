@@ -116,6 +116,17 @@ export interface ConsoleTiming {
   /** log_heavy_us / log_tiny_us. ≳2 under CDP, ≈1 without. */
   heavy_over_tiny: number;
   /**
+   * Same `log_heavy` loop measured with `document.timeline.currentTime`
+   * — a second clock on a completely different prototype chain
+   * (DocumentTimeline.prototype.currentTime). Real browsers: this
+   * agrees with `log_heavy_us` to within milliseconds. An attacker who
+   * patches only `Performance.prototype.now` (every red-team round to
+   * date) leaves this clock untouched → `tl_heavy_us` reflects real
+   * wall time while `log_heavy_us` reflects the attacker's counter.
+   * The disagreement is the tell.
+   */
+  tl_heavy_us: number;
+  /**
    * `Performance.prototype.now` toStrings as `[native code]` in the
    * bench iframe's realm. False = an attacker has replaced the
    * timing oracle the bench depends on. Catches the v4-class bypass
