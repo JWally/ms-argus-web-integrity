@@ -130,6 +130,15 @@ export interface ConsoleTiming {
    * it's verified.
    */
   date_now_native: boolean;
+  /**
+   * `console.log` is native in the bench iframe. The bench's signal
+   * IS the cost of `con.log(...)` — a no-op replacement makes the
+   * measurement meaningless. The broad lie scanner covers `console`,
+   * but this is the bench-local source of truth.
+   */
+  con_log_native: boolean;
+  /** `console.dir` is native in the bench iframe. */
+  con_dir_native: boolean;
 }
 
 /**
@@ -150,6 +159,14 @@ export interface CdpSignals {
   crossRealmTampered: string[];
   /** Console-serialization timing bench. Absent on non-Blink. */
   consoleTiming?: ConsoleTiming;
+  /**
+   * `Object.getOwnPropertyNames` toStrings as `[native code]`. False
+   * means the enumeration primitive that `cdcGlobals` / `pwBindings`
+   * / `clientLitter` / `automationGlobals` all depend on has been
+   * replaced — those four signals' negative results can't be trusted.
+   * Analyzer treats false as hard-residue evidence on its own.
+   */
+  ownPropsNative: boolean;
 }
 
 export type PlatformScores = Record<string, number>;

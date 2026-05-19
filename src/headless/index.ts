@@ -446,6 +446,32 @@ function detectCrossRealmTampering(): string[] {
   return signals;
 }
 
+/**
+ * `Object.getOwnPropertyNames` is the single API that `checkCdcGlobals`,
+ * `checkPwBindings`, `checkClientLitter`, and `checkAutomationGlobals`
+ * all depend on. A bot that replaces it with a filtered version
+ * (`function getOwnPropertyNames(obj) { return native(obj).filter(k =>
+ * !/^__pw_/.test(k)); }`) blinds all four signals at once — the four
+ * hard-residue checks see clean state and `hasHardCdpResidue` returns
+ * false. `Object` is not in `API_SEARCH_TARGETS` (the broad scanner
+ * skips it because legitimate-code FP blast radius would be too high to
+ * scan generically). Verifying it here, at the one use-site that
+ * cares, gives the analyzer a flag without bloating the generic scan.
+ *
+ * False here doesn't necessarily mean a bot — but combined with otherwise
+ * clean CDP signals, it's the shape of "attacker is hiding from the
+ * enumeration we just ran." The analyzer treats it as hard residue.
+ */
+function isOwnPropsNative(): boolean {
+  try {
+    return NATIVE_RE.test(
+      Function.prototype.toString.call(Object.getOwnPropertyNames),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function detectCdp(): CdpSignals {
   return {
     cdcGlobals: checkCdcGlobals(),
@@ -455,6 +481,7 @@ function detectCdp(): CdpSignals {
     automationGlobals: checkAutomationGlobals(),
     crossRealmTampered: detectCrossRealmTampering(),
     consoleTiming: getConsoleTiming(),
+    ownPropsNative: isOwnPropsNative(),
   };
 }
 
