@@ -158,10 +158,18 @@ function detectDevTools(): boolean {
 function isWebDriverOn(): boolean {
   const hasModernChrome = CSS.supports('border-end-end-radius: initial');
   const webdriverUndefined = navigator.webdriver === undefined;
+  // If `CSS.supports` has been replaced (e.g. `() => false`), the
+  // modern-Chrome + webdriver-undefined trap is neutered — the first
+  // conjunct goes false even when the attacker has deleted
+  // `navigator.webdriver`. CSS is not in `API_SEARCH_TARGETS`, so verify
+  // at the use-site. A patched `CSS.supports` is itself strong automation
+  // evidence — no real-user extension patches this primitive.
+  const cssSupportsTampered = !isNativeFn(CSS.supports);
   return (
     (hasModernChrome && webdriverUndefined) ||
     !!navigator.webdriver ||
-    !!lieProps['Navigator.webdriver']
+    !!lieProps['Navigator.webdriver'] ||
+    cssSupportsTampered
   );
 }
 
@@ -462,14 +470,24 @@ function detectCrossRealmTampering(): string[] {
  * clean CDP signals, it's the shape of "attacker is hiding from the
  * enumeration we just ran." The analyzer treats it as hard residue.
  */
-function isOwnPropsNative(): boolean {
+/**
+ * Use-site native check: does `fn.toString()` match the canonical
+ * `[native code]` shape? Pulls `Function.prototype.toString` from the
+ * main realm — if the attacker has patched THAT, the lie scanner
+ * already covers it via `API_SEARCH_TARGETS['Function']` and
+ * `stealth.hasToStringProxy`, so they can't escape both.
+ */
+function isNativeFn(fn: unknown): boolean {
+  if (typeof fn !== 'function') return false;
   try {
-    return NATIVE_RE.test(
-      Function.prototype.toString.call(Object.getOwnPropertyNames),
-    );
+    return NATIVE_RE.test(Function.prototype.toString.call(fn));
   } catch {
     return false;
   }
+}
+
+function isOwnPropsNative(): boolean {
+  return isNativeFn(Object.getOwnPropertyNames);
 }
 
 function detectCdp(): CdpSignals {
