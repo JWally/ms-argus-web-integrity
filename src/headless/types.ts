@@ -115,6 +115,21 @@ export interface ConsoleTiming {
   dir_heavy_us: number;
   /** log_heavy_us / log_tiny_us. ≳2 under CDP, ≈1 without. */
   heavy_over_tiny: number;
+  /**
+   * `Performance.prototype.now` toStrings as `[native code]` in the
+   * bench iframe's realm. False = an attacker has replaced the
+   * timing oracle the bench depends on. Catches the v4-class bypass
+   * that the lie scanner can't reach (Performance is not in
+   * `API_SEARCH_TARGETS`).
+   */
+  perf_now_native: boolean;
+  /**
+   * `Date.now` toStrings as `[native code]`. Date.now is a static
+   * method on the Date constructor and is structurally unreachable
+   * by the prototype-walking lie scanner. This is the only place
+   * it's verified.
+   */
+  date_now_native: boolean;
 }
 
 /**

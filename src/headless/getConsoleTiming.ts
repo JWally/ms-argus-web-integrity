@@ -70,6 +70,46 @@ function setupIframe(): HTMLIFrameElement | null {
   }
 }
 
+const NATIVE_RE = /\{\s*\[native code\]\s*\}/;
+
+/**
+ * Native-shape oracle.
+ *
+ * The CDP-timing bench is only meaningful if the timing primitives it
+ * relies on (`Performance.prototype.now`, `Date.now`) haven't been
+ * replaced. An attacker who patches either with a JS function that
+ * returns predictable values can drive the bench to any timing they
+ * want, regardless of how slow real `console.log` is under CDP.
+ *
+ * `Performance` is structurally outside the lie scanner's reach
+ * (`API_SEARCH_TARGETS` covers fingerprint-relevant prototypes, not
+ * timing oracles). `Date.now` is doubly out of reach — it's a static
+ * method on the constructor, and the scanner walks `Date.prototype`.
+ *
+ * This check sits at the detector use-site instead. We pull
+ * `Function.prototype.toString` from the iframe's realm (same realm
+ * the bench runs in, so any addInitScript that patched there has
+ * landed) and test the toString against the standard `[native code]`
+ * pattern. A plain `Object.defineProperty` replacement produces
+ * `function now() { ... }` and fails the regex.
+ *
+ * A Proxy-with-fake-native-toString attack would slip past this check
+ * but requires patching `Function.prototype.toString` itself, which
+ * (a) lights up `stealth.hasToStringProxy` (Function IS in the lie
+ * scanner) and (b) propagates to the cross-realm check.
+ */
+function isNativeFunction(
+  fn: unknown,
+  scope: Window & typeof globalThis,
+): boolean {
+  if (typeof fn !== 'function') return false;
+  try {
+    return NATIVE_RE.test(scope.Function.prototype.toString.call(fn));
+  } catch {
+    return false;
+  }
+}
+
 export default function getConsoleTiming(): ConsoleTiming | undefined {
   if (!IS_BLINK) return undefined;
   const iframe = setupIframe();
@@ -79,6 +119,9 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
   const con = win.console;
   const perf = win.performance;
   if (!con || !perf) return undefined;
+
+  const perfNowNative = isNativeFunction(win.Performance?.prototype?.now, win);
+  const dateNowNative = isNativeFunction(win.Date?.now, win);
 
   try {
     // Warm up to amortize V8 JIT and any cold-cache cost.
@@ -105,6 +148,8 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
       log_heavy_us: round2(logHeavyUs),
       dir_heavy_us: round2(dirHeavyUs),
       heavy_over_tiny: round2(logHeavyUs / Math.max(logTinyUs, 0.01)),
+      perf_now_native: perfNowNative,
+      date_now_native: dateNowNative,
     };
   } catch {
     return undefined;
