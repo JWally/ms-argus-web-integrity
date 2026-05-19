@@ -168,21 +168,26 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
   const conLogNative = isNativeFunction(con.log, win);
   const conDirNative = isNativeFunction(con.dir, win);
 
-  // Second clock for cross-verification: DocumentTimeline.currentTime.
-  // Same DOMHighResTimeStamp scale as performance.now(), but lives on a
-  // completely different prototype chain (DocumentTimeline.prototype.
-  // currentTime, a getter). An attacker who patches `Performance.prototype.
-  // now` only — every red-team round so far — leaves this clock untouched.
-  // If the two clocks disagree on the wall-clock cost of the same loop,
-  // one of them is lying.
+  // Second clock for cross-verification: `Date.now()`. Wall-clock,
+  // 1ms resolution, lives on the Date constructor as a static (completely
+  // different prototype chain from `Performance.prototype.now`).
   //
-  // Falls back to perf.now() when DocumentTimeline isn't available (older
-  // browsers); the divergence check is then meaningless and stays at 0.
-  const timeline = win.document?.timeline;
-  const tlNow = (): number =>
-    typeof timeline?.currentTime === 'number'
-      ? timeline.currentTime
-      : perf.now();
+  // Critical detail: `DocumentTimeline.currentTime` was tried first but
+  // only advances per animation frame — both reads inside a synchronous
+  // loop return the same value, producing a useless delta of 0.
+  // `Date.now()` reads the OS wall clock on every call and advances
+  // mid-loop, which is exactly what we need.
+  //
+  // An attacker who patches `Performance.prototype.now` only (every
+  // red-team round through v6) leaves `Date.now()` untouched: the proxy
+  // returns a counter ~1µs/call while real wall time is ~7µs (no CDP)
+  // or ~63µs (CDP). The cross-clock disagreement is the tell.
+  //
+  // `date_now_native` already verifies the toString shape of Date.now.
+  // A v7-class attacker would need a second Proxy on Date.now whose
+  // values agree with their perf.now counter — two coordinated lies on
+  // separate prototype chains.
+  const dateNow = win.Date.now;
 
   try {
     // Warm up to amortize V8 JIT and any cold-cache cost.
@@ -195,13 +200,13 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
     // Heavy loop is the highest-signal bucket — under CDP it takes ~60ms
     // for N=1000 console.log(heavyObj) calls, ~7ms without. That's the
     // window where a fake perf.now most visibly diverges from real wall
-    // time. We bracket only this loop with the timeline clock to keep
+    // time. We bracket only this loop with the second clock to keep
     // overhead low.
     const t2 = perf.now();
-    const tl2 = tlNow();
+    const d2 = dateNow();
     for (let i = 0; i < N; i++) con.log(HEAVY);
     const t3 = perf.now();
-    const tl3 = tlNow();
+    const d3 = dateNow();
 
     const t4 = perf.now();
     for (let i = 0; i < N; i++) con.dir(HEAVY);
@@ -210,7 +215,7 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
     const logTinyUs = ((t1 - t0) * 1000) / N;
     const logHeavyUs = ((t3 - t2) * 1000) / N;
     const dirHeavyUs = ((t5 - t4) * 1000) / N;
-    const tlHeavyUs = ((tl3 - tl2) * 1000) / N;
+    const tlHeavyUs = ((d3 - d2) * 1000) / N;
 
     return {
       log_tiny_us: round2(logTinyUs),
