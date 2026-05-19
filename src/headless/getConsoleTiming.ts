@@ -110,6 +110,40 @@ function isNativeFunction(
   }
 }
 
+/**
+ * Proxy-aware native check for methods that validate `this`.
+ *
+ * The toString check alone is fooled by a Proxy wrapping the real
+ * native: V8's `Function.prototype.toString.call(proxy)` returns the
+ * target's source text per ECMA-262 step 4, so the Proxy reports as
+ * `[native code]`. The behavioral side, however, is not: the apply
+ * trap runs the attacker's code, not the native's binding.
+ *
+ * `Performance.prototype.now` requires its `this` to be a Performance
+ * instance — the native binding throws `TypeError: Illegal invocation`
+ * when called with the wrong receiver. A permissive apply trap (the
+ * basic v5 attack pattern) returns its counter without checking,
+ * exposing the wrapping.
+ *
+ * A sophisticated attacker can re-implement the this-validation in the
+ * trap, defeating this check. That's a real follow-up risk, but the
+ * cost rises with each behavioral signature added — eventually the
+ * trap is a full re-implementation, at which point it can't fake
+ * V8-internal timing characteristics either.
+ */
+function isNativeMethodValidatesThis(
+  fn: unknown,
+  scope: Window & typeof globalThis,
+): boolean {
+  if (!isNativeFunction(fn, scope)) return false;
+  try {
+    (fn as (this: unknown) => unknown).call({});
+    return false;
+  } catch (e) {
+    return e instanceof scope.TypeError;
+  }
+}
+
 export default function getConsoleTiming(): ConsoleTiming | undefined {
   if (!IS_BLINK) return undefined;
   const iframe = setupIframe();
@@ -120,7 +154,10 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
   const perf = win.performance;
   if (!con || !perf) return undefined;
 
-  const perfNowNative = isNativeFunction(win.Performance?.prototype?.now, win);
+  const perfNowNative = isNativeMethodValidatesThis(
+    win.Performance?.prototype?.now,
+    win,
+  );
   const dateNowNative = isNativeFunction(win.Date?.now, win);
   // The bench's signal IS the cost of `con.log(...)`. If those methods
   // have been replaced (the v3 attack), the measurement is meaningless —
