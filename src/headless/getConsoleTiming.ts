@@ -122,6 +122,14 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
 
   const perfNowNative = isNativeFunction(win.Performance?.prototype?.now, win);
   const dateNowNative = isNativeFunction(win.Date?.now, win);
+  // The bench's signal IS the cost of `con.log(...)`. If those methods
+  // have been replaced (the v3 attack), the measurement is meaningless —
+  // it times a JS function call, not V8 inspector serialization. The
+  // broad lie scanner now covers `console`, but checking inline keeps
+  // the bench self-describing: one boolean per dependency the bench
+  // actually uses, in the realm the bench actually ran in.
+  const conLogNative = isNativeFunction(con.log, win);
+  const conDirNative = isNativeFunction(con.dir, win);
 
   try {
     // Warm up to amortize V8 JIT and any cold-cache cost.
@@ -150,6 +158,8 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
       heavy_over_tiny: round2(logHeavyUs / Math.max(logTinyUs, 0.01)),
       perf_now_native: perfNowNative,
       date_now_native: dateNowNative,
+      con_log_native: conLogNative,
+      con_dir_native: conDirNative,
     };
   } catch {
     return undefined;
