@@ -487,7 +487,20 @@ function isNativeFn(fn: unknown): boolean {
 }
 
 function isOwnPropsNative(): boolean {
-  return isNativeFn(Object.getOwnPropertyNames);
+  if (!isNativeFn(Object.getOwnPropertyNames)) return false;
+  // Behavioral check: native `Object.getOwnPropertyNames(null)` throws
+  // TypeError. A permissive Proxy apply trap that just returns a
+  // filtered array doesn't re-implement the null/undefined validation
+  // and slips through the toString check alone. This catches the
+  // v5-class Proxy attack against this primitive specifically; a
+  // sophisticated attacker can match the validation, but each behavior
+  // they have to fake raises the bar.
+  try {
+    Object.getOwnPropertyNames(null as unknown as object);
+    return false;
+  } catch (e) {
+    return e instanceof TypeError;
+  }
 }
 
 function detectCdp(): CdpSignals {
