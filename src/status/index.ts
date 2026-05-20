@@ -244,23 +244,27 @@ async function getScriptSize(): Promise<number | null> {
  * @returns System status fingerprint data
  */
 export async function getStatus(): Promise<StatusFingerprint> {
-  const [
-    batteryInfo,
-    quotaA,
-    quotaB,
-    scriptSize,
-    stackSize,
-    timingRes,
-    iframeCrypto,
-  ] = await Promise.all([
-    getBattery(),
-    getStorage(),
-    getStorage(), // Called twice to detect randomization
-    getScriptSize(),
-    getMaxCallStackSize(),
-    getTimingResolution(),
-    probeIframeCrypto(),
-  ]);
+  const [batteryInfo, quotaA, quotaB, scriptSize, stackSize, timingRes] =
+    await Promise.all([
+      getBattery(),
+      getStorage(),
+      getStorage(), // Called twice to detect randomization
+      getScriptSize(),
+      getMaxCallStackSize(),
+      getTimingResolution(),
+    ]);
+
+  // Probe runs sequentially AFTER the rest of the status collection so it
+  // gets a quiet main thread for its 2s liveness race. When the probe was
+  // colocated in the Promise.all above, the synchronous CPU-bound siblings
+  // (getMaxCallStackSize blows the stack 11x, getTimingResolution loops
+  // 5000x) blocked main for ~500ms before the probe even started, then
+  // the freshly-created nested iframe's keygen resolution had to fight a
+  // backlog of microtasks from the four async siblings. Real Mac Firefox
+  // resolves in ~30-150ms when given clean main; Camoufox/Marionette
+  // never resolves at all, so this change preserves the bot signal while
+  // unblocking real users on slower realms.
+  const iframeCrypto = await probeIframeCrypto();
 
   // Client-injected window properties
   const clientLitter = [...new Set([...getClientLitter(), ...getClientCode()])]
