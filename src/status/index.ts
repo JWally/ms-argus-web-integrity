@@ -25,6 +25,7 @@
  */
 
 import { expectFailure } from '../utils/expected-failure';
+import { probeIframeCrypto } from './iframe-crypto-probe';
 import type { BatteryInfo, StatusFingerprint } from './types';
 
 /** Bytes per gigabyte for conversion calculations */
@@ -243,15 +244,23 @@ async function getScriptSize(): Promise<number | null> {
  * @returns System status fingerprint data
  */
 export async function getStatus(): Promise<StatusFingerprint> {
-  const [batteryInfo, quotaA, quotaB, scriptSize, stackSize, timingRes] =
-    await Promise.all([
-      getBattery(),
-      getStorage(),
-      getStorage(), // Called twice to detect randomization
-      getScriptSize(),
-      getMaxCallStackSize(),
-      getTimingResolution(),
-    ]);
+  const [
+    batteryInfo,
+    quotaA,
+    quotaB,
+    scriptSize,
+    stackSize,
+    timingRes,
+    iframeCrypto,
+  ] = await Promise.all([
+    getBattery(),
+    getStorage(),
+    getStorage(), // Called twice to detect randomization
+    getScriptSize(),
+    getMaxCallStackSize(),
+    getTimingResolution(),
+    probeIframeCrypto(),
+  ]);
 
   // Client-injected window properties
   const clientLitter = [...new Set([...getClientLitter(), ...getClientCode()])]
@@ -307,5 +316,6 @@ export async function getStatus(): Promise<StatusFingerprint> {
     clientLitter,
     scripts,
     scriptSize,
+    iframeCrypto,
   };
 }
