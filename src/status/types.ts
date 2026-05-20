@@ -88,4 +88,16 @@ export interface StatusFingerprint {
   scripts: string[];
   /** Size of current script (bytes) */
   scriptSize: number | null;
+  /**
+   * Nested-iframe `crypto.subtle.generateKey` liveness. Real browsers
+   * resolve in <100ms. Marionette-augmented automation runtimes
+   * (Playwright Firefox, Camoufox) orphan the iframe's WebCrypto thread
+   * and never resolve — the 1s timeout fires and `responsive: false` is
+   * recorded. See `iframe-crypto-probe.ts`.
+   */
+  iframeCrypto: {
+    responsive: boolean;
+    elapsed_ms: number | null;
+    iframe_created: boolean;
+  };
 }
