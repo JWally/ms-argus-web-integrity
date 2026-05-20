@@ -416,13 +416,75 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
 
   // ── Async ECDH APIs ───────────────────────────────────────────────
 
-  // 0x30: ECDH key generation using pristine iframe crypto
+  // ECDH crypto subtle, with fallback to global crypto if the nested-iframe
+  // path hangs. Background: bridge constructs a double-nested hidden iframe
+  // (above) to get a "pristine" crypto.subtle reference that bypasses bot
+  // hooks on the top-level crypto. In Playwright Firefox (and similar
+  // Marionette-augmented runners), the nested iframe's WebCrypto thread
+  // becomes orphaned — `subtle.generateKey({ECDH,P-256}, false, ['deriveBits'])`
+  // returns a Promise that never resolves. Real Firefox and real Chrome
+  // resolve in <50ms. We race against a 2s deadline and fall back to the
+  // top-level `crypto.subtle` on timeout. Once fallback is taken we keep
+  // using global for the rest of the run — exportKey + deriveBits + encrypt
+  // would all hang in the same iframe.
+  let activeSubtle: SubtleCrypto = iframeCrypto ?? crypto.subtle;
+  const fallbackToGlobal = (): void => {
+    if (activeSubtle !== crypto.subtle) {
+      activeSubtle = crypto.subtle;
+    }
+  };
+  const withIframeTimeout = async <T>(
+    promiseFactory: () => Promise<T>,
+    timeoutMs: number,
+  ): Promise<T> => {
+    if (activeSubtle === crypto.subtle) return promiseFactory();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promiseFactory(),
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('iframe_crypto_timeout')),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } catch (err) {
+      // Either the iframe-side Promise rejected, or our timer fired.
+      // Switch to global crypto and let the caller retry.
+      fallbackToGlobal();
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  // 0x30: ECDH key generation using pristine iframe crypto (with fallback)
   bridge.register(BridgeApi.ECDH_GENERATE_KEY, {
     call: async () => {
-      const subtle = iframeCrypto ?? crypto.subtle;
-      return subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, [
-        'deriveBits',
-      ]);
+      const params = {
+        algo: { name: 'ECDH', namedCurve: 'P-256' } as const,
+        extractable: false,
+        usages: ['deriveBits'] as KeyUsage[],
+      };
+      try {
+        return await withIframeTimeout(
+          () =>
+            activeSubtle.generateKey(
+              params.algo,
+              params.extractable,
+              params.usages,
+            ),
+          2000,
+        );
+      } catch {
+        // iframe path timed out or rejected; activeSubtle is now global.
+        return crypto.subtle.generateKey(
+          params.algo,
+          params.extractable,
+          params.usages,
+        );
+      }
     },
   });
 
@@ -430,8 +492,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   bridge.register(BridgeApi.ECDH_EXPORT_RAW, {
     call: async (_thisArg, args) => {
       const publicKey = args[0] as CryptoKey;
-      const subtle = iframeCrypto ?? crypto.subtle;
-      const rawPub = await subtle.exportKey('raw', publicKey);
+      const rawPub = await activeSubtle.exportKey('raw', publicKey);
       return uint8ToBase64(new Uint8Array(rawPub));
     },
   });
@@ -444,7 +505,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       const serverPubKeyB64 = args[1] as string;
       const payloadJSON = args[2] as string;
 
-      const subtle = iframeCrypto ?? crypto.subtle;
+      const subtle = activeSubtle;
 
       const serverPubBytes = base64ToUint8(serverPubKeyB64);
       const serverPubKey = await subtle.importKey(
