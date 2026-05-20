@@ -103,6 +103,54 @@ function isNativeMethodValidatesThis(fn) {
   catch (e) { return e instanceof self.TypeError; }
 }
 
+// The v3-closure scan for console.* tampering — moved out of the
+// main-thread lie scanner (where it false-positived 5×11 = 55 lies per
+// CriOS session via Google's iOS analytics shim) and into the worker
+// realm. Engine gating is implicit: getConsoleTimingWorker bails on
+// !IS_BLINK before ever spawning a worker, so this code never runs on
+// WebKit-based browsers (Safari, CriOS, Brave iOS, etc.) where wrapped
+// console.* is a legitimate app-shim signature, not bot patching.
+//
+// Probes mirror the main-scanner's 11-deep checks against each method
+// but dedupe at emission: ≥1 failure on a method counts that method as
+// one lie, not eleven. The returned count is the number of wrapped
+// console methods in this realm. Real Chrome worker: 0. Patched (the
+// only path being attacker-injected source via Worker / Blob /
+// URL.createObjectURL wrapping): ≥1.
+function probeConsoleMethod(method) {
+  if (typeof method !== 'function') return true;
+  try {
+    if (!NATIVE_RE.test(self.Function.prototype.toString.call(method))) {
+      return true;
+    }
+  } catch { return true; }
+  // Native bound methods don't have an own 'prototype' property —
+  // 'prototype' in console.log is false. A function wrapper has one.
+  try {
+    if ('prototype' in method) return true;
+  } catch { return true; }
+  // Native methods are not constructable. \`new console.log()\` should
+  // throw a TypeError. A wrapper that forgot a construct trap or that
+  // shadowed with a plain function will silently accept the call.
+  try {
+    new method();
+    return true;
+  } catch (e) {
+    if (!(e instanceof self.TypeError)) return true;
+  }
+  return false;
+}
+
+function countConsoleLies(con) {
+  if (!con) return 0;
+  let n = 0;
+  const methods = ['log', 'warn', 'error', 'info', 'debug', 'dir'];
+  for (const name of methods) {
+    if (probeConsoleMethod(con[name])) n++;
+  }
+  return n;
+}
+
 function round2(n) { return Math.round(n * 100) / 100; }
 
 try {
@@ -116,6 +164,7 @@ try {
   const dateNowNative = isNativeFn(self.Date && self.Date.now);
   const conLogNative = isNativeFn(con && con.log);
   const conDirNative = isNativeFn(con && con.dir);
+  const consoleLies = countConsoleLies(con);
 
   for (let i = 0; i < 100; i++) con.log('warmup');
 
@@ -160,6 +209,7 @@ try {
       date_now_native: dateNowNative,
       con_log_native: conLogNative,
       con_dir_native: conDirNative,
+      console_lies: consoleLies,
     },
   });
 } catch (_e) {

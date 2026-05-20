@@ -172,6 +172,31 @@ export interface ConsoleTiming {
   con_log_native: boolean;
   /** `console.dir` is native in the bench iframe. */
   con_dir_native: boolean;
+  /**
+   * Count of `console.*` methods detected as wrapped/patched in the
+   * bench realm. Only the worker bench populates this field — it's
+   * the new home for the v3-closure scan after `console` was removed
+   * from the main-thread lie scanner (which false-positived on
+   * CriOS's Google-iOS analytics shim, see `src/lies/constants.ts`).
+   *
+   * Probes `log`, `warn`, `error`, `info`, `debug`, `dir`. Each method
+   * is tested for native shape (`Function.prototype.toString` matches
+   * `[native code]`), absence of an own `prototype` property, and
+   * non-constructability (`new method()` throws TypeError). A method
+   * failing any probe counts as 1 lie — collapsed to one-per-method
+   * rather than the eleven-per-method explosion that broke CriOS.
+   *
+   * - 0 — all probed methods native in the bench realm
+   * - 1-6 — one or more methods wrapped (in the worker realm, this
+   *   is direct evidence of attacker-injected source via wrapped
+   *   `Worker` / `Blob` / `URL.createObjectURL` — not legitimate
+   *   extension or app-shim activity, since workers are out of those
+   *   reach paths)
+   *
+   * Optional because the iframe bench predates the field and older
+   * SDK builds don't emit it. Treat absence as "no probe ran."
+   */
+  console_lies?: number;
 }
 
 /**
