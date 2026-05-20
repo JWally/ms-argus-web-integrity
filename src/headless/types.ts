@@ -133,6 +133,22 @@ export interface ConsoleTiming {
    */
   tl_heavy_us: number;
   /**
+   * Hardware anchor: µs/iter of a Math-only loop (Math.sqrt + Math.sin)
+   * over 5000 iterations. CDP's `Runtime.consoleAPICalled` does not
+   * intercept Math intrinsics, so this number reflects pure V8/CPU
+   * throughput — a value the attacker can't predict from the timing
+   * fields alone. Server cross-checks: a stubbed bench that reports
+   * believable `log_*_us` must also pick a `math_loop_us` consistent
+   * with the device's `hardwareConcurrency` × `deviceMemory` ×
+   * historical timing distribution. The ratio `log_tiny_us /
+   * math_loop_us` has a hardware-independent floor.
+   *
+   * Optional because the original iframe bench predates the field —
+   * older clients submit `ConsoleTiming` without it. Treat absence
+   * as "couldn't measure", not "passed".
+   */
+  math_loop_us?: number;
+  /**
    * `Performance.prototype.now` toStrings as `[native code]` in the
    * bench iframe's realm. False = an attacker has replaced the
    * timing oracle the bench depends on. Catches the v4-class bypass
@@ -156,6 +172,31 @@ export interface ConsoleTiming {
   con_log_native: boolean;
   /** `console.dir` is native in the bench iframe. */
   con_dir_native: boolean;
+  /**
+   * Count of `console.*` methods detected as wrapped/patched in the
+   * bench realm. Only the worker bench populates this field — it's
+   * the new home for the v3-closure scan after `console` was removed
+   * from the main-thread lie scanner (which false-positived on
+   * CriOS's Google-iOS analytics shim, see `src/lies/constants.ts`).
+   *
+   * Probes `log`, `warn`, `error`, `info`, `debug`, `dir`. Each method
+   * is tested for native shape (`Function.prototype.toString` matches
+   * `[native code]`), absence of an own `prototype` property, and
+   * non-constructability (`new method()` throws TypeError). A method
+   * failing any probe counts as 1 lie — collapsed to one-per-method
+   * rather than the eleven-per-method explosion that broke CriOS.
+   *
+   * - 0 — all probed methods native in the bench realm
+   * - 1-6 — one or more methods wrapped (in the worker realm, this
+   *   is direct evidence of attacker-injected source via wrapped
+   *   `Worker` / `Blob` / `URL.createObjectURL` — not legitimate
+   *   extension or app-shim activity, since workers are out of those
+   *   reach paths)
+   *
+   * Optional because the iframe bench predates the field and older
+   * SDK builds don't emit it. Treat absence as "no probe ran."
+   */
+  console_lies?: number;
 }
 
 /**
@@ -176,6 +217,22 @@ export interface CdpSignals {
   crossRealmTampered: string[];
   /** Console-serialization timing bench. Absent on non-Blink. */
   consoleTiming?: ConsoleTiming;
+  /**
+   * Same bench as `consoleTiming`, but run in a dedicated Worker spawned
+   * via blob URL. The worker realm is unreachable by main-thread Proxy
+   * patches and the blob URL is not interceptable by `page.route`
+   * (browser-internal scheme). Together with the iframe bench, the two
+   * fields cross-validate: a stub-the-function attack on either path
+   * leaves the other intact and the disagreement is the tell.
+   *
+   * Absent when:
+   *   - non-Blink (same as `consoleTiming`)
+   *   - merchant CSP blocks blob workers (`worker-src 'none'` or
+   *     similar) — falls back to iframe bench only
+   *   - worker timeout (1500ms) — under CDP the heavy loop can take
+   *     ~60ms but worker spawn + bench should finish well inside this
+   */
+  consoleTimingWorker?: ConsoleTiming;
   /**
    * `Object.getOwnPropertyNames` toStrings as `[native code]`. False
    * means the enumeration primitive that `cdcGlobals` / `pwBindings`

@@ -40,6 +40,7 @@ import { CHROME_INDEX_RANGE } from './constants';
 // perspective. No-op when at top-level.
 const topWin = getTopSameOriginWindow();
 import getConsoleTiming from './getConsoleTiming';
+import getConsoleTimingWorker from './getConsoleTimingWorker';
 import getPlatformEstimate from './getPlatformEstimate';
 import { getSystemFonts } from './getSystemFonts';
 import type {
@@ -503,8 +504,14 @@ function isOwnPropsNative(): boolean {
   }
 }
 
-function detectCdp(): CdpSignals {
-  return {
+async function detectCdp(): Promise<CdpSignals> {
+  // Kick off the worker bench before running the iframe bench so the
+  // two run in parallel. The worker is a one-shot blob-URL Worker —
+  // ~5-20ms startup on the main thread (creation + postMessage wiring),
+  // then it runs in the worker realm while the iframe bench occupies
+  // main. The await rejoins them at the end of detectCdp.
+  const workerPromise = getConsoleTimingWorker();
+  const signals = {
     cdcGlobals: checkCdcGlobals(),
     pwBindings: checkPwBindings(),
     phantomMismatch: checkPhantomMismatch(),
@@ -514,6 +521,7 @@ function detectCdp(): CdpSignals {
     consoleTiming: getConsoleTiming(),
     ownPropsNative: isOwnPropsNative(),
   };
+  return { ...signals, consoleTimingWorker: await workerPromise };
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -570,7 +578,7 @@ export default async function getHeadlessFeatures(
       incompleteAppSurface: hasIncompleteAppSurface(),
     };
 
-    const cdp = detectCdp();
+    const cdp = await detectCdp();
 
     logTestResult({ time: timer.stop(), test: 'headless', passed: true });
 

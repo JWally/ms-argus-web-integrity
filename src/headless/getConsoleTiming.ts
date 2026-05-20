@@ -48,6 +48,10 @@ import { IS_BLINK } from '../utils/helpers';
 import type { ConsoleTiming } from './types';
 
 const N = 1000;
+// M iterations of the Math-only loop. Picked so total wall time on
+// real hardware is ~50-200µs — long enough to be insensitive to clock
+// jitter, short enough to add no perceptible main-thread cost.
+const M = 5000;
 const HEAVY = {
   l1: { l2: { l3: { l4: [1, 2, 3, 4, 5, 'abc', true, null] } } },
   other: { a: 1, b: 2, c: 3, d: 'hello', arr: [10, 20, 30] },
@@ -212,16 +216,32 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
     for (let i = 0; i < N; i++) con.dir(HEAVY);
     const t5 = perf.now();
 
+    // Math-only hardware anchor. CDP's Runtime.consoleAPICalled does not
+    // intercept Math intrinsics; this number reflects pure V8/CPU
+    // throughput. Server cross-checks log_*_us against this — a stubbed
+    // bench has to pick values consistent with the device's actual CPU,
+    // which it doesn't know in advance. The `if (mathAcc === Infinity)`
+    // guard prevents V8 from dead-code-eliminating the loop body.
+    let mathAcc = 0;
+    const t6 = perf.now();
+    for (let i = 0; i < M; i++) {
+      mathAcc += Math.sqrt(i * 0.7) + Math.sin(i * 0.013);
+    }
+    const t7 = perf.now();
+    if (mathAcc === Infinity) con.log('unreachable');
+
     const logTinyUs = ((t1 - t0) * 1000) / N;
     const logHeavyUs = ((t3 - t2) * 1000) / N;
     const dirHeavyUs = ((t5 - t4) * 1000) / N;
     const tlHeavyUs = ((d3 - d2) * 1000) / N;
+    const mathLoopUs = ((t7 - t6) * 1000) / M;
 
     return {
       log_tiny_us: round2(logTinyUs),
       log_heavy_us: round2(logHeavyUs),
       dir_heavy_us: round2(dirHeavyUs),
       tl_heavy_us: round2(tlHeavyUs),
+      math_loop_us: round2(mathLoopUs),
       heavy_over_tiny: round2(logHeavyUs / Math.max(logTinyUs, 0.01)),
       perf_now_native: perfNowNative,
       date_now_native: dateNowNative,

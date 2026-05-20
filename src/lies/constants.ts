@@ -416,27 +416,58 @@ export const API_SEARCH_TARGETS: Array<{
     target: ['decode', 'encoding'],
   },
 
-  // Console — the CDP-attach detector in headless/getConsoleTiming.ts
-  // benches `console.log` vs `console.log(heavyObj)` to measure V8
-  // inspector serialization cost. A bot that replaces `console.log` with
-  // a JS no-op disconnects the inspector path and collapses the ratio to
-  // ~1. We scan both the instance (lowercase `console` — catches own-
-  // property shadowing like `console.log = noop`) and the `Console`
-  // constructor's prototype (catches prototype-level patches).
+  // URL + Blob — anchor the worker-bench's blob-URL source path.
+  // The CDP-timing bench delivers its worker source as
+  // `URL.createObjectURL(new Blob([WORKER_SCRIPT], ...))`. blob: URLs
+  // are browser-internal and not interceptable by page.route, but a
+  // sufficiently motivated attacker can wrap either constructor with
+  // a Proxy and rewrite the source bytes before the Worker is built —
+  // injecting a console patch into the worker realm and defeating the
+  // in-worker console probe (the v3 closure's new home, see
+  // `src/headless/getConsoleTimingWorker.ts`). Adding these to the
+  // scanner makes that wrap detectable. The targets cover the methods
+  // the bench actually uses; the rest of the URL surface is left out
+  // to avoid drag on unrelated workflows.
+  {
+    api: 'URL',
+    target: ['createObjectURL', 'revokeObjectURL'],
+  },
+  { api: 'Blob', target: undefined },
+
+  // Console — moved out of the main-thread lie scanner. The v3 closure
+  // motivation for scanning console (catch `console.log = noop` patches
+  // that defeat the CDP-timing bench) is still load-bearing, but the
+  // check now lives inside the worker bench's own realm — see
+  // `src/headless/getConsoleTimingWorker.ts`. The worker-realm probe
+  // catches the same attack with a much better false-positive profile:
   //
-  // FP risk: some browser extensions (uBlock Origin, password managers)
-  // patch `console.log` to filter their own noise. Track lie counts from
-  // real telemetry before raising the projection tier on console-only
-  // lies. The current ladder (lies>=1 → tampering=25) already absorbs a
-  // small number of extension-induced lies without producing a block.
-  {
-    api: 'console',
-    target: ['log', 'warn', 'error', 'info', 'debug', 'dir', 'trace', 'table'],
-  },
-  {
-    api: 'Console',
-    target: ['log', 'warn', 'error', 'info', 'debug', 'dir', 'trace', 'table'],
-  },
+  //   - CriOS (Chrome on iOS) wraps `console.*` in Google's iOS-app
+  //     analytics shim. The wrapper is structurally identical to a
+  //     bot's patch and triggers every probe in this scanner — 5
+  //     methods × 11 probes = 55 false-positive lies per session, well
+  //     past the lies>=20 → device_tampering=100 threshold. Removing
+  //     console from this scanner eliminates that false positive.
+  //   - The worker bench is engine-gated to Blink (IS_BLINK check at
+  //     entry), so CriOS / Safari / Brave iOS never run the in-worker
+  //     probe. CriOS's analytics shim is structurally invisible to it.
+  //   - Browser extensions (uBlock, password managers) inject into
+  //     content scripts on the main thread; Web Worker realms are
+  //     out of their reach. Extension-induced console wrapping no
+  //     longer false-positives this signal either.
+  //
+  // Closing this scanner entry creates a residual gap: an attacker who
+  // patches `console.*` in the main realm without touching the worker
+  // realm now passes the main-thread lie scanner. That's fine — the
+  // main-thread iframe bench's timing measurement collapses to ~1.0
+  // under that patch, the worker bench (different realm, attacker
+  // patch doesn't reach it) still measures real CDP overhead, and the
+  // analyzer's hasBenchDisagreement check catches the divergence at 75.
+  // The only path to defeat both benches is to patch the worker's
+  // console too, which requires either wrapping Worker (caught here —
+  // Worker.prototype is on the scanner via `scanner.ts:102`) or
+  // wrapping URL.createObjectURL to rewrite the blob source (now
+  // covered by the URL/Blob entries below — added 2026-05-20 alongside
+  // this removal to keep the worker-source-rewrite path closed).
 ];
 
 /**

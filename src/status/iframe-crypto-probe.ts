@@ -37,7 +37,11 @@
  * @returns liveness snapshot for inclusion in the status fingerprint.
  */
 
-const TIMEOUT_MS = 1000;
+// 2s matches the bridge's own iframe-crypto race (vm/bridge.ts) — keeps the
+// probe and the in-flight workaround on the same tolerance so a session
+// that just barely makes it through the bridge isn't simultaneously flagged
+// by the probe.
+const TIMEOUT_MS = 2000;
 const HIDDEN_CSS =
   'display:none;width:0;height:0;border:none;position:absolute;left:-10000px';
 
