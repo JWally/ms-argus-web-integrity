@@ -100,4 +100,28 @@ export interface StatusFingerprint {
     elapsed_ms: number | null;
     iframe_created: boolean;
   };
+
+  /**
+   * Use-site behavioral checks for native JS APIs (CASTLE-TO-ARGUS §3.3).
+   * Each boolean is true when the API still behaves like a real native
+   * binding at the moment of check. The lie scanner in `src/lies/` is one
+   * WeakMap away from being defeated; these checks pair with it so
+   * post-WeakMap attackers also have to re-implement runtime behavior, not
+   * just the `toString` source text. Helpers in `utils/native-checks.ts`.
+   *
+   * Per-field semantics:
+   *  - true  → native shape + behavioral signature both pass
+   *  - false → either source-text shape or runtime behavior tampered
+   *  - null  → API absent in this environment (don't penalize)
+   */
+  nativeIntegrity: {
+    /**
+     * `crypto.getRandomValues({})` MUST throw TypeError (arg is not a
+     * TypedArray). A permissive Proxy apply trap that just returns random
+     * bytes for any input skips this validation. Used by the bridge IV
+     * generation path (`bridge.ts:503`) and ECDH-derived envelope sealing,
+     * so a tampered RNG = predictable IV = potential ciphertext analysis.
+     */
+    cryptoGetRandomValues: boolean | null;
+  };
 }
