@@ -197,6 +197,40 @@ export interface ConsoleTiming {
    * SDK builds don't emit it. Treat absence as "no probe ran."
    */
   console_lies?: number;
+  /**
+   * Heavy loop measured with `+new Date()`. Routes through the Date
+   * constructor (V8 `DateConstructor::Construct`), NOT `Date.now`.
+   *
+   * v7 closure clock. The v7 attack (2026-05-19) wraps both
+   * `Performance.prototype.now` and `Date.now` in lockstep Proxies,
+   * making `log_heavy_us` and `tl_heavy_us` both report ~0 under
+   * attack. `+new Date()` is on a different code path and v7 leaves
+   * it untouched — empirically validated 2026-05-22 in
+   * `~/Dev/tmp/timer-experiment` (`newDateValueOf` agrees with truth
+   * 1.008× under v7 attack, while `dateNow` reads 0).
+   *
+   * Server check: `abs(wall_heavy_us - log_heavy_us) > ~2µs/call`
+   * (≈2ms across the loop) is v7-class clock tampering. Real
+   * browsers agree to clock resolution.
+   *
+   * Optional: older SDK builds don't emit it.
+   */
+  wall_heavy_us?: number;
+  /**
+   * Heavy loop measured via `performance.measure(start, end).duration`.
+   * The marks capture wall time in C++ at `performance.mark()` call;
+   * `.duration` computes from those captured values and does NOT
+   * re-read `performance.now()` at query time.
+   *
+   * Second v7-bypassing clock. Empirically validated 2026-05-22
+   * (`perfMeasureDuration` agrees with truth 1.0015× under v7
+   * attack). Redundant with `wall_heavy_us` but on a different
+   * surface — a v8-class attacker would have to patch BOTH the Date
+   * constructor AND `performance.mark`/`performance.measure` to hide.
+   *
+   * Optional: older SDK builds don't emit it.
+   */
+  measure_heavy_us?: number;
 }
 
 /**
