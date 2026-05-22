@@ -23,6 +23,8 @@
  * Expected plaintext magic: 0x41424D56 ("ABMV"), matches src/vm/format.ts.
  */
 
+import { getPristineRefs } from '../utils/pristine-iframe';
+
 export const SALT_LEN = 8;
 export const KEY_LEN = 32;
 /** One bucket = 24 hours. Re-deploy every ~7 days so ±SKEW window stays open. */
@@ -31,7 +33,6 @@ export const BUCKET_MS = 24 * 60 * 60 * 1000;
 export const SKEW = 3;
 
 const MAGIC = 0x41424d56;
-const te = new TextEncoder();
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   const out = new Uint8Array(a.length + b.length);
@@ -54,14 +55,14 @@ async function sha256(input: Uint8Array): Promise<Uint8Array> {
 }
 
 export async function deriveEmbedMask(salt: Uint8Array): Promise<Uint8Array> {
-  const h = await sha256(concatBytes(te.encode('argus-vm-k-'), salt));
+  const te = getPristineRefs().textEncode;
+  const h = await sha256(concatBytes(te('argus-vm-k-'), salt));
   return h.subarray(0, KEY_LEN);
 }
 
 export async function deriveTimeMask(bucket: number): Promise<Uint8Array> {
-  const h = await sha256(
-    concatBytes(te.encode('argus-vm-t-'), bucketToBytes(bucket)),
-  );
+  const te = getPristineRefs().textEncode;
+  const h = await sha256(concatBytes(te('argus-vm-t-'), bucketToBytes(bucket)));
   return h.subarray(0, KEY_LEN);
 }
 
