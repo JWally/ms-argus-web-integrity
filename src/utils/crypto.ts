@@ -11,8 +11,18 @@
  * - `getFuzzyHash`: SimHash for locality-sensitive fingerprint matching
  * - `getSimHashDistance`: Hamming distance between SimHash values
  *
+ * All `JSON.stringify` and `TextEncoder.encode` calls in this module
+ * route through the iframe-pristine references (see
+ * `utils/pristine-iframe.ts`) to defend against the §3.11 chokepoint
+ * MITM attack from CASTLE-TO-ARGUS.md §3.14 bullet B. A page-realm
+ * hook on top-level `JSON.stringify` does not see values being
+ * fingerprinted here, nor can it substitute baseline values before
+ * hashing.
+ *
  * @module utils/crypto
  */
+
+import { getPristineRefs } from './pristine-iframe';
 
 /**
  * Generates an 8-character hex hash using an FNV-1a inspired algorithm.
@@ -21,7 +31,7 @@
  * @returns An 8-character hexadecimal hash string
  */
 const hashMini = (x: any) => {
-  const json = `${JSON.stringify(x)}`;
+  const json = `${getPristineRefs().stringify(x)}`;
   const hash = json.split('').reduce((hash, char, i) => {
     return (Math.imul(31, hash) + json.charCodeAt(i)) | 0;
   }, 0x811c9dc5);
@@ -42,7 +52,8 @@ const instanceId =
  * @returns A promise resolving to the hexadecimal hash string
  */
 const hashify = (x: any, algorithm = 'SHA-256') => {
-  const json = `${JSON.stringify(x)}`;
+  const pristine = getPristineRefs();
+  const json = `${pristine.stringify(x)}`;
 
   // Fallback for non-secure contexts (HTTP) where crypto.subtle is unavailable
   if (!crypto.subtle) {
@@ -50,8 +61,9 @@ const hashify = (x: any, algorithm = 'SHA-256') => {
     return Promise.resolve(hashMini(x).padEnd(64, '0'));
   }
 
-  const jsonBuffer = new TextEncoder().encode(json);
-  return crypto.subtle.digest(algorithm, jsonBuffer).then((hashBuffer) => {
+  const subtleImpl = pristine.subtle ?? crypto.subtle;
+  const jsonBuffer = pristine.textEncode(json);
+  return subtleImpl.digest(algorithm, jsonBuffer).then((hashBuffer) => {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const hashHex = hashArray
       .map((b) => ('00' + b.toString(16)).slice(-2))
@@ -69,22 +81,25 @@ const hashify = (x: any, algorithm = 'SHA-256') => {
  * @returns A promise resolving to a tuple of [ciphertext, IV, key] as base64 strings
  */
 async function cipher(data: any): Promise<string[]> {
+  const pristine = getPristineRefs();
+
   // Fallback for non-secure contexts (HTTP) where crypto.subtle is unavailable
   if (!crypto.subtle) {
     // Return dummy values - cipher isn't used in core fingerprinting
-    const fallback = btoa(JSON.stringify(data));
+    const fallback = btoa(pristine.stringify(data));
     return [fallback, 'no-iv', 'no-key'];
   }
 
+  const subtleImpl = pristine.subtle ?? crypto.subtle;
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await crypto.subtle.generateKey(
+  const key = await subtleImpl.generateKey(
     { name: 'AES-GCM', length: 256 },
     true,
     ['encrypt', 'decrypt'],
   );
-  const json = JSON.stringify(data);
-  const encoded = new TextEncoder().encode(json);
-  const ciphertext = await crypto.subtle.encrypt(
+  const json = pristine.stringify(data);
+  const encoded = pristine.textEncode(json);
+  const ciphertext = await subtleImpl.encrypt(
     { name: 'AES-GCM', iv },
     key,
     encoded,
@@ -98,7 +113,7 @@ async function cipher(data: any): Promise<string[]> {
   const vector = btoa(
     String.fromCharCode.apply(null, iv as unknown as number[]),
   );
-  const { k: keyData } = await crypto.subtle.exportKey('jwk', key);
+  const { k: keyData } = await subtleImpl.exportKey('jwk', key);
 
   return [message, vector, keyData!];
 }
@@ -333,7 +348,10 @@ const getFuzzyHash = async (
     if (value === undefined || value === null) continue;
 
     // Hash the feature key+value to get deterministic bit pattern
-    const featureString = JSON.stringify({ k: featureKey, v: value });
+    const featureString = getPristineRefs().stringify({
+      k: featureKey,
+      v: value,
+    });
 
     // Generate enough bits by chaining hashMini calls
     for (let h = 0; h < SIMHASH_BITS / 32; h++) {
@@ -392,7 +410,9 @@ const popcount8 = (n: number): number => {
  */
 const simhashify = (x: unknown): string => {
   // Strip JSON syntax, keep colons for key:value structure
-  const stripped = JSON.stringify(x).replace(/[{}\[\]",]/g, '');
+  const stripped = getPristineRefs()
+    .stringify(x)
+    .replace(/[{}\[\]",]/g, '');
 
   const NGRAM_SIZE = 3;
 

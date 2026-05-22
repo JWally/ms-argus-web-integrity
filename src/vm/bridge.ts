@@ -22,6 +22,7 @@ import {
 import { getPatToken, diagString } from '../utils/pat';
 import { getCryptoId } from '../utils/get-crypto-id';
 import { getClientUuid } from '../utils/get-client-uuid';
+import { getPristineRefs } from '../utils/pristine-iframe';
 import type { IntegrityResult } from '../integrity';
 
 export interface ApiHandler {
@@ -191,9 +192,15 @@ export interface ArgusVmContext {
   onSubmissionError?: (detail: string) => void;
 }
 
-const HIDDEN_CSS =
-  'position:absolute;width:0;height:0;border:0;overflow:hidden;clip:rect(0,0,0,0)';
-const HKDF_INFO = new TextEncoder().encode('argus-web-v1');
+// HKDF_INFO encoded via the pristine TextEncoder lifted from the nested
+// iframe — see utils/pristine-iframe.ts. Lazy-initialized so module
+// import order doesn't force iframe creation before document.body exists.
+let HKDF_INFO_CACHED: Uint8Array<ArrayBuffer> | null = null;
+function getHkdfInfo(): Uint8Array<ArrayBuffer> {
+  if (HKDF_INFO_CACHED) return HKDF_INFO_CACHED;
+  HKDF_INFO_CACHED = getPristineRefs().textEncode('argus-web-v1');
+  return HKDF_INFO_CACHED;
+}
 
 /** Convert Uint8Array to base64 (chunked to avoid stack overflow) */
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -236,71 +243,22 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // the device.client_uuid field rather than block submission.
   const clientUuidPromise = getClientUuid().catch(() => null);
 
-  // Nested double-iframe → pristine crypto.subtle + JSON.stringify. Bypasses
-  // bot hooks that patch top-level crypto (PHANTOM_DARKNESS etc.). Used by
-  // the ECDH APIs (0x30-0x32) and the residual TLS-result stringify below.
-  // Leave iframes attached until VM execution completes — removing them
-  // early (setTimeout 0) destroys the crypto context mid-flight because
-  // async sigint fetches yield the event loop.
+  // Pristine cross-realm references — see utils/pristine-iframe.ts.
+  // Lifts crypto.subtle, JSON.stringify, JSON.parse, TextEncoder,
+  // performance.now from a nested double-iframe at module init.
+  // Bypasses page-level bot hooks that patch top-level crypto
+  // (PHANTOM_DARKNESS etc.) or the §3.11 chokepoint MITM that hooks
+  // JSON.stringify / TextEncoder.encode to substitute baseline payloads.
   //
-  // The payload JSON itself is now serialized inside the VM (see stringify()
-  // in scripts/vm-src/main.ts) — no JS-level stringify is called on it.
-  // iframeStringify therefore only protects the TLS-fingerprint string that
-  // feeds into the sigintTls field, a lower-value target.
-  let iframeCrypto: SubtleCrypto | null = null;
-  let iframeStringify: typeof JSON.stringify | null = null;
-  let iframePerfNow: (() => number) | null = null;
-  try {
-    const host = document.createElement('div');
-    const shadow = host.attachShadow({ mode: 'closed' });
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = HIDDEN_CSS;
-    shadow.appendChild(iframe);
-    document.body.appendChild(host);
-    const win = iframe.contentWindow;
-    if (win) {
-      const doc1 = win.document;
-      const iframe2 = doc1.createElement('iframe');
-      iframe2.style.cssText = HIDDEN_CSS;
-      doc1.body.appendChild(iframe2);
-      const win2 = iframe2.contentWindow;
-      if (win2) {
-        try {
-          iframeCrypto = (win2 as unknown as { crypto: Crypto }).crypto.subtle;
-        } catch {
-          /* crypto unavailable in iframe */
-        }
-        try {
-          const win2Perf = (win2 as unknown as { performance: Performance })
-            .performance;
-          iframePerfNow = win2Perf.now.bind(win2Perf);
-        } catch {
-          /* performance unavailable in iframe */
-        }
-        try {
-          const win2JSON = (win2 as unknown as { JSON: typeof JSON }).JSON;
-          iframeStringify = win2JSON.stringify.bind(win2JSON);
-        } catch {
-          /* JSON unavailable in iframe */
-        }
-      }
-    }
-  } catch {
-    /* iframe creation failed */
-  }
-  const safeStringify: typeof JSON.stringify =
-    iframeStringify ?? JSON.stringify;
-
-  // Pristine monotonic timer for anti-debug timing checks in bytecode.
-  // Prefer the nested iframe's performance.now (captured before any page
-  // patching); fall back to top-level performance.now then Date.now.
-  // Bound to its owner so later reassignment of the bare reference can't
-  // neutralize us.
-  const safePerfNow: () => number =
-    iframePerfNow ??
-    (typeof performance !== 'undefined'
-      ? performance.now.bind(performance)
-      : Date.now.bind(Date));
+  // The payload JSON itself is serialized inside the VM (see
+  // stringify() in scripts/vm-src/main.ts), so pristine.stringify is
+  // only used for the TLS-fingerprint string that feeds into sigintTls.
+  // pristine.textEncode IS load-bearing — it processes the VM-assembled
+  // payload before encryption at the ECDH_DERIVE_ENCRYPT site below.
+  const pristine = getPristineRefs();
+  const iframeCrypto: SubtleCrypto | null = pristine.subtle;
+  const safeStringify: typeof JSON.stringify = pristine.stringify;
+  const safePerfNow: () => number = pristine.perfNow;
 
   // ── Payload composition helpers ───────────────────────────────────
 
@@ -524,18 +482,22 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       const hkdfKey = await subtle.importKey('raw', sharedBits, 'HKDF', false, [
         'deriveKey',
       ]);
-      const salt = new TextEncoder().encode(
-        new Date().toISOString().slice(0, 10),
-      );
+      const salt = pristine.textEncode(new Date().toISOString().slice(0, 10));
       const aesKey = await subtle.deriveKey(
-        { name: 'HKDF', hash: 'SHA-256', salt, info: HKDF_INFO },
+        { name: 'HKDF', hash: 'SHA-256', salt, info: getHkdfInfo() },
         hkdfKey,
         { name: 'AES-GCM', length: 256 },
         false,
         ['encrypt'],
       );
 
-      const encoded = new TextEncoder().encode(payloadJSON);
+      // pristine.textEncode here is the critical defense (CASTLE-TO-ARGUS
+      // §3.14 bullet A): payloadJSON is the VM-assembled fingerprint
+      // string. A page-realm hook on TextEncoder.prototype.encode would
+      // see plaintext or substitute a clean baseline before encryption.
+      // pristine.textEncode runs through the nested-iframe TextEncoder,
+      // out of reach of those hooks.
+      const encoded = pristine.textEncode(payloadJSON);
       const compressed = deflateRaw(encoded);
 
       const iv = crypto.getRandomValues(new Uint8Array(12));

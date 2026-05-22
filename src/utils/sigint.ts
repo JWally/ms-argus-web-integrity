@@ -7,7 +7,14 @@
  * - H2 Probe: HTTP/2 protocol fingerprinting (SETTINGS, WINDOW_UPDATE, PRIORITY frames)
  *
  * All endpoints are configurable via domain configuration.
+ *
+ * Server-response parsing uses the iframe-pristine `JSON.parse` —
+ * defends against page-realm hooks on top-level `JSON.parse` that
+ * would substitute fake sigint responses to inject baseline tokens
+ * (CASTLE-TO-ARGUS.md §3.14 bullet D).
  */
+
+import { getPristineRefs } from './pristine-iframe';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -173,7 +180,10 @@ export function extractEcdhPubkeyFromVersionHash(
     if (parts.length !== 3) return null;
     // Base64url → base64 → JSON
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(atob(b64)) as Record<string, unknown>;
+    const payload = getPristineRefs().parse(atob(b64)) as Record<
+      string,
+      unknown
+    >;
     return typeof payload['vh'] === 'string' ? payload['vh'] : null;
   } catch {
     return null;
@@ -419,7 +429,7 @@ export async function fetchTlsFingerprint(config: SigintConfig): Promise<{
       };
     }
     try {
-      const data = JSON.parse(json) as TlsFingerprintResponse;
+      const data = getPristineRefs().parse(json) as TlsFingerprintResponse;
       if (sig) data.sig = sig;
       return { data, error: null, durationMs };
     } catch {

@@ -24,6 +24,21 @@
  */
 
 import { withTimeout } from './with-timeout';
+import { getPristineRefs } from './pristine-iframe';
+
+/**
+ * Pristine `crypto.subtle` lifted from a nested hidden iframe — defends
+ * against page-realm hooks on top-level `crypto.subtle.generateKey` /
+ * `sign` that would substitute the keypair or sign over different
+ * data. See CASTLE-TO-ARGUS.md §3.14 bullet C and
+ * `utils/pristine-iframe.ts`.
+ *
+ * Falls back to top-level `crypto.subtle` if the iframe lift fails
+ * (very early page lifecycle, sandboxed environment).
+ */
+function safeSubtle(): SubtleCrypto {
+  return getPristineRefs().subtle ?? crypto.subtle;
+}
 
 const DATABASE_NAME = 'argus-integrity-db';
 /**
@@ -51,7 +66,7 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
 }
 
 async function exportPublicKeyB64(key: CryptoKey): Promise<string> {
-  return arrayBufferToBase64(await crypto.subtle.exportKey('spki', key));
+  return arrayBufferToBase64(await safeSubtle().exportKey('spki', key));
 }
 
 export interface CryptoKeys {
@@ -180,8 +195,11 @@ const setupCryptography = async (): Promise<CryptoKeys> => {
       }
     }
 
-    // Non-extractable — private key cannot be exported
-    const keyPair = await crypto.subtle.generateKey(
+    // Non-extractable — private key cannot be exported.
+    // Uses pristine subtle so a page-realm hook on
+    // crypto.subtle.generateKey can't substitute an attacker-controlled
+    // keypair (which would let them impersonate this device across sessions).
+    const keyPair = await safeSubtle().generateKey(
       { name: 'ECDSA', namedCurve: 'P-256' },
       false,
       ['sign', 'verify'],
@@ -223,8 +241,9 @@ export const getCryptoId = async (): Promise<CryptoKeys> => {
   if (memoised) return memoised;
   if (!inflight)
     inflight = setupCryptography().catch(async () => {
-      // IDB totally unavailable — stay in-memory
-      const keyPair = await crypto.subtle.generateKey(
+      // IDB totally unavailable — stay in-memory.
+      // Pristine subtle for same reason as the IDB path above.
+      const keyPair = await safeSubtle().generateKey(
         { name: 'ECDSA', namedCurve: 'P-256' },
         false,
         ['sign', 'verify'],
@@ -248,10 +267,15 @@ export const signWithCryptoId = async (
   data: string | ArrayBuffer,
 ): Promise<string> => {
   const keys = await getCryptoId();
+  // Pristine TextEncoder so a page-realm hook on
+  // TextEncoder.prototype.encode can't substitute a different string to
+  // be signed (which would let an attacker get a valid signature over
+  // arbitrary content).
+  const pristine = getPristineRefs();
   const dataBuffer =
-    typeof data === 'string' ? new TextEncoder().encode(data) : data;
+    typeof data === 'string' ? pristine.textEncode(data) : data;
 
-  const signature = await crypto.subtle.sign(
+  const signature = await safeSubtle().sign(
     { name: 'ECDSA', hash: 'SHA-256' },
     keys.privateKey,
     dataBuffer,

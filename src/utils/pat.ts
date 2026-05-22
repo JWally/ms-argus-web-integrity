@@ -15,7 +15,12 @@
  *
  * Loose-coupling contract: never throws. Empty token + diag fields on
  * any failure mode (network, non-2xx, malformed body, non-Apple OS).
+ *
+ * sessionStorage cache JSON round-tripping uses the iframe-pristine
+ * `JSON.stringify` / `parse` (CASTLE-TO-ARGUS.md §3.14 bullet E).
  */
+
+import { getPristineRefs } from './pristine-iframe';
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 
@@ -63,7 +68,7 @@ function readCache(): CachedToken | null {
     if (typeof sessionStorage === 'undefined') return null;
     const raw = sessionStorage.getItem(CACHE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<CachedToken>;
+    const parsed = getPristineRefs().parse(raw) as Partial<CachedToken>;
     if (
       typeof parsed.token !== 'string' ||
       typeof parsed.exp !== 'number' ||
@@ -80,7 +85,7 @@ function readCache(): CachedToken | null {
 function writeCache(c: CachedToken): void {
   try {
     if (typeof sessionStorage === 'undefined') return;
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify(c));
+    sessionStorage.setItem(CACHE_KEY, getPristineRefs().stringify(c));
   } catch {
     /* quota / private mode / disabled storage — silently skip */
   }
@@ -180,5 +185,5 @@ export function diagString(r: PatProbeResult): string {
     hasToken: r.hasToken,
   };
   if (r.err) out.err = r.err;
-  return JSON.stringify(out);
+  return getPristineRefs().stringify(out);
 }
