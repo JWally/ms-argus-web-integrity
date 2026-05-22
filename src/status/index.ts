@@ -25,6 +25,7 @@
  */
 
 import { expectFailure } from '../utils/expected-failure';
+import { isNativeStaticThrowsOnArg } from '../utils/native-checks';
 import { probeIframeCrypto } from './iframe-crypto-probe';
 import type { BatteryInfo, StatusFingerprint } from './types';
 
@@ -299,6 +300,18 @@ export async function getStatus(): Promise<StatusFingerprint> {
     .map((x) => x.src.replace(/^https?:\/\//, ''))
     .slice(0, 10);
 
+  // Use-site behavioral check for crypto.getRandomValues (CASTLE-TO-ARGUS
+  // §3.3). Pairs with the lie scanner — survives the WeakMap-toString
+  // bypass because a Proxy apply trap that just returns random bytes
+  // can't fake the TypedArray-validation TypeError. crypto.subtle's
+  // own ECDH path in the bridge depends on this RNG being honest.
+  const nativeIntegrity = {
+    cryptoGetRandomValues:
+      typeof crypto !== 'undefined' && crypto?.getRandomValues
+        ? isNativeStaticThrowsOnArg(crypto.getRandomValues.bind(crypto), {})
+        : null,
+  };
+
   return {
     charging,
     chargingTime,
@@ -321,5 +334,6 @@ export async function getStatus(): Promise<StatusFingerprint> {
     scripts,
     scriptSize,
     iframeCrypto,
+    nativeIntegrity,
   };
 }
