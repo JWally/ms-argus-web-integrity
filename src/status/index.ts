@@ -31,6 +31,7 @@ import {
   isNativeMethodValidatesThis,
   isNativeStaticThrowsOnArg,
 } from '../utils/native-checks';
+import { getPristineRefs } from '../utils/pristine-iframe';
 import { probeIframeCrypto } from './iframe-crypto-probe';
 import type { BatteryInfo, StatusFingerprint } from './types';
 
@@ -311,6 +312,46 @@ export async function getStatus(): Promise<StatusFingerprint> {
   // statistical variance) require attackers to faithfully simulate
   // engine internals, not just spoof source text. Each null means the
   // API was absent in this environment (don't penalize).
+  const pristineRefsForCrossRealm = getPristineRefs();
+  // Cross-realm identity comparison: a page-realm `Object.defineProperty`
+  // hook on `Crypto.prototype.getRandomValues` produces a different
+  // toString source than the iframe-realm version (which page-level
+  // hooks don't reach). Catches the most common stealth-library pattern.
+  // V8 Proxy-on-native forwards toString to the target, so this signal
+  // misses Proxy hooks — but those are caught by `cryptoGetRandomValues`
+  // behavioral check below. Stack: each attack class faces a different
+  // check.
+  const rngCrossRealmMatch =
+    pristineRefsForCrossRealm.getRandomValuesNativeSource !== null &&
+    typeof crypto !== 'undefined' &&
+    typeof crypto?.getRandomValues === 'function'
+      ? (() => {
+          try {
+            return (
+              Function.prototype.toString.call(crypto.getRandomValues) ===
+              pristineRefsForCrossRealm.getRandomValuesNativeSource
+            );
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+  const randomUuidCrossRealmMatch =
+    pristineRefsForCrossRealm.randomUUIDNativeSource !== null &&
+    typeof crypto !== 'undefined' &&
+    typeof crypto?.randomUUID === 'function'
+      ? (() => {
+          try {
+            return (
+              Function.prototype.toString.call(crypto.randomUUID) ===
+              pristineRefsForCrossRealm.randomUUIDNativeSource
+            );
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+
   const nativeIntegrity = {
     cryptoGetRandomValues:
       typeof crypto !== 'undefined' && crypto?.getRandomValues
@@ -339,6 +380,8 @@ export async function getStatus(): Promise<StatusFingerprint> {
             WebGLRenderingContext.prototype.getParameter,
           )
         : null,
+    rngCrossRealmMatch,
+    randomUuidCrossRealmMatch,
   };
 
   return {
