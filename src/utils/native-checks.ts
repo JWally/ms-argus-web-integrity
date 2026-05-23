@@ -39,6 +39,19 @@
 const NATIVE_RE = /\{\s*\[native code\]\s*\}/;
 
 /**
+ * True if the given `toString` source text matches the engine's native
+ * shape. Use when you already have the source string in hand — e.g.
+ * cross-realm comparison where you've called `cleanToString.call(fn)`
+ * from a pristine iframe.
+ *
+ * For function inputs, prefer `isNativeFn(fn)` which handles the
+ * `toString` call and the `try/catch` for hostile prototypes.
+ */
+export function isNativeSource(src: string): boolean {
+  return NATIVE_RE.test(src);
+}
+
+/**
  * True if `fn`'s `toString` source text matches the engine's native shape.
  *
  * Defeated by a Proxy whose `apply` target is a real native (V8 forwards
@@ -50,7 +63,7 @@ const NATIVE_RE = /\{\s*\[native code\]\s*\}/;
 export function isNativeFn(fn: unknown): boolean {
   if (typeof fn !== 'function') return false;
   try {
-    return NATIVE_RE.test(Function.prototype.toString.call(fn));
+    return isNativeSource(Function.prototype.toString.call(fn));
   } catch {
     return false;
   }
@@ -112,4 +125,48 @@ export function isNativeStaticThrowsOnArg(
   } catch (e) {
     return e instanceof TypeError;
   }
+}
+
+/**
+ * Statistical sanity check for RNG-shaped natives that don't validate
+ * `this` or arguments — `Math.random` is the canonical case. A real
+ * uniform [0, 1) source has variance ≈ 1/12 ≈ 0.083; a stubbed
+ * `() => 0.5` (common in audio-fingerprint evasion frameworks) has
+ * variance 0.
+ *
+ * Returns true iff:
+ *  - every sample is a finite number in [0, 1)
+ *  - sample variance exceeds `minVariance`
+ *
+ * Stack with `isNativeFn` to also reject defineProperty-replaced impls
+ * (those lose the `[native code]` shape).
+ *
+ * @param fn — the RNG-shaped function (returns a number per call)
+ * @param n — sample count (default 32, ~1ms cost)
+ * @param minVariance — floor; default 0.01 (12× below uniform's 0.083)
+ */
+export function hasNonTrivialVariance(
+  fn: () => number,
+  n = 32,
+  minVariance = 0.01,
+): boolean {
+  const samples: number[] = [];
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    let v: number;
+    try {
+      v = fn();
+    } catch {
+      return false;
+    }
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v >= 1) {
+      return false;
+    }
+    samples.push(v);
+    sum += v;
+  }
+  const mean = sum / n;
+  let varianceSum = 0;
+  for (const v of samples) varianceSum += (v - mean) * (v - mean);
+  return varianceSum / n > minVariance;
 }

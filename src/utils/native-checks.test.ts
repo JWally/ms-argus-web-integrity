@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  hasNonTrivialVariance,
   isNativeFn,
   isNativeMethodValidatesThis,
+  isNativeSource,
   isNativeStaticThrowsOnArg,
 } from './native-checks';
 
@@ -144,5 +146,67 @@ describe('isNativeStaticThrowsOnArg', () => {
       throw new RangeError('nope');
     };
     expect(isNativeStaticThrowsOnArg(throwsRangeError, {})).toBe(false);
+  });
+});
+
+describe('isNativeSource', () => {
+  it('matches the `[native code]` shape across whitespace variants', () => {
+    expect(isNativeSource('function name() { [native code] }')).toBe(true);
+    expect(isNativeSource('function bound name() {\n  [native code]\n}')).toBe(
+      true,
+    );
+    expect(isNativeSource('function () {[native code]}')).toBe(true);
+  });
+
+  it('rejects user-defined function source text', () => {
+    expect(isNativeSource('function () { return 1; }')).toBe(false);
+    expect(isNativeSource('() => 0')).toBe(false);
+    expect(isNativeSource('')).toBe(false);
+  });
+});
+
+describe('hasNonTrivialVariance', () => {
+  it('returns true for Math.random (real uniform RNG)', () => {
+    expect(hasNonTrivialVariance(Math.random)).toBe(true);
+  });
+
+  it('returns false for a stubbed constant', () => {
+    expect(hasNonTrivialVariance(() => 0.5)).toBe(false);
+    expect(hasNonTrivialVariance(() => 0)).toBe(false);
+  });
+
+  it('returns false when output exits [0, 1)', () => {
+    // Above 1 → fails the range check
+    expect(hasNonTrivialVariance(() => 1.5)).toBe(false);
+    // Negative → fails range check
+    expect(hasNonTrivialVariance(() => -0.1)).toBe(false);
+    // Exactly 1 → not in [0, 1) per spec
+    expect(hasNonTrivialVariance(() => 1)).toBe(false);
+  });
+
+  it('returns false for non-number or non-finite output', () => {
+    expect(
+      hasNonTrivialVariance((() => 'oops') as unknown as () => number),
+    ).toBe(false);
+    expect(hasNonTrivialVariance(() => Infinity)).toBe(false);
+    expect(hasNonTrivialVariance(() => NaN)).toBe(false);
+  });
+
+  it('returns false if the function throws', () => {
+    expect(
+      hasNonTrivialVariance(() => {
+        throw new Error('rng broken');
+      }),
+    ).toBe(false);
+  });
+
+  it('returns true for a synthetic spread above the variance floor', () => {
+    // Generate a deterministic pseudo-uniform sequence with non-trivial spread.
+    let i = 0;
+    const seq = (): number => {
+      i = (i + 1) % 32;
+      return i / 32; // 0/32, 1/32, ..., 31/32 — uniform-ish on [0, 1)
+    };
+    expect(hasNonTrivialVariance(seq)).toBe(true);
   });
 });

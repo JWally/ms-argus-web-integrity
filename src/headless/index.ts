@@ -26,6 +26,11 @@ import {
   logTestResult,
 } from '../utils/helpers';
 import { expectFailure } from '../utils/expected-failure';
+import {
+  isNativeFn,
+  isNativeSource,
+  isNativeStaticThrowsOnArg,
+} from '../utils/native-checks';
 import { getTopSameOriginWindow } from '../utils/top-window';
 
 import { CHROME_INDEX_RANGE } from './constants';
@@ -292,7 +297,6 @@ function hasBadWebGL(
 
 // ── CDP / Automation framework detection ─────────────────────────────────────
 
-const NATIVE_RE = /\{\s*\[native code\]\s*\}/;
 const HIDDEN_IFRAME_CSS = 'display:none;width:0;height:0;border:none';
 
 const BOT_LITTER_RE =
@@ -445,7 +449,7 @@ function detectCrossRealmTampering(): string[] {
       if (typeof fn !== 'function') continue;
       const mainResult = Function.prototype.toString.call(fn);
       const crossResult = cleanToString.call(fn);
-      if (NATIVE_RE.test(mainResult) && !NATIVE_RE.test(crossResult)) {
+      if (isNativeSource(mainResult) && !isNativeSource(crossResult)) {
         signals.push(name);
       }
     } catch {
@@ -471,37 +475,14 @@ function detectCrossRealmTampering(): string[] {
  * clean CDP signals, it's the shape of "attacker is hiding from the
  * enumeration we just ran." The analyzer treats it as hard residue.
  */
-/**
- * Use-site native check: does `fn.toString()` match the canonical
- * `[native code]` shape? Pulls `Function.prototype.toString` from the
- * main realm — if the attacker has patched THAT, the lie scanner
- * already covers it via `API_SEARCH_TARGETS['Function']` and
- * `stealth.hasToStringProxy`, so they can't escape both.
- */
-function isNativeFn(fn: unknown): boolean {
-  if (typeof fn !== 'function') return false;
-  try {
-    return NATIVE_RE.test(Function.prototype.toString.call(fn));
-  } catch {
-    return false;
-  }
-}
-
 function isOwnPropsNative(): boolean {
-  if (!isNativeFn(Object.getOwnPropertyNames)) return false;
-  // Behavioral check: native `Object.getOwnPropertyNames(null)` throws
-  // TypeError. A permissive Proxy apply trap that just returns a
-  // filtered array doesn't re-implement the null/undefined validation
-  // and slips through the toString check alone. This catches the
-  // v5-class Proxy attack against this primitive specifically; a
-  // sophisticated attacker can match the validation, but each behavior
-  // they have to fake raises the bar.
-  try {
-    Object.getOwnPropertyNames(null as unknown as object);
-    return false;
-  } catch (e) {
-    return e instanceof TypeError;
-  }
+  // Native `Object.getOwnPropertyNames(null)` throws TypeError; a
+  // permissive Proxy apply trap that just returns a filtered array
+  // doesn't re-implement the null-validation. Catches the v5-class
+  // attack against this primitive specifically. `Object` is not in
+  // `API_SEARCH_TARGETS` (broad FP blast radius), so this use-site
+  // check is the dedicated coverage.
+  return isNativeStaticThrowsOnArg(Object.getOwnPropertyNames, null);
 }
 
 async function detectCdp(): Promise<CdpSignals> {

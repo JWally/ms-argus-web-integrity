@@ -25,7 +25,12 @@
  */
 
 import { expectFailure } from '../utils/expected-failure';
-import { isNativeStaticThrowsOnArg } from '../utils/native-checks';
+import {
+  hasNonTrivialVariance,
+  isNativeFn,
+  isNativeMethodValidatesThis,
+  isNativeStaticThrowsOnArg,
+} from '../utils/native-checks';
 import { probeIframeCrypto } from './iframe-crypto-probe';
 import type { BatteryInfo, StatusFingerprint } from './types';
 
@@ -300,15 +305,39 @@ export async function getStatus(): Promise<StatusFingerprint> {
     .map((x) => x.src.replace(/^https?:\/\//, ''))
     .slice(0, 10);
 
-  // Use-site behavioral check for crypto.getRandomValues (CASTLE-TO-ARGUS
-  // §3.3). Pairs with the lie scanner — survives the WeakMap-toString
-  // bypass because a Proxy apply trap that just returns random bytes
-  // can't fake the TypedArray-validation TypeError. crypto.subtle's
-  // own ECDH path in the bridge depends on this RNG being honest.
+  // Use-site behavioral checks for native APIs (CASTLE-TO-ARGUS §3.3).
+  // Pairs with the lie scanner — survives the WeakMap-toString bypass
+  // because behavioral traps (receiver validation, arg validation,
+  // statistical variance) require attackers to faithfully simulate
+  // engine internals, not just spoof source text. Each null means the
+  // API was absent in this environment (don't penalize).
   const nativeIntegrity = {
     cryptoGetRandomValues:
       typeof crypto !== 'undefined' && crypto?.getRandomValues
         ? isNativeStaticThrowsOnArg(crypto.getRandomValues.bind(crypto), {})
+        : null,
+    mathRandom:
+      typeof Math !== 'undefined' && typeof Math.random === 'function'
+        ? isNativeFn(Math.random) && hasNonTrivialVariance(Math.random)
+        : null,
+    // measureText requires `this` to be a CanvasRenderingContext2D. Real
+    // native throws Illegal Invocation; a permissive Proxy returns
+    // attacker-controlled TextMetrics without re-implementing this-check.
+    canvasMeasureText:
+      typeof CanvasRenderingContext2D !== 'undefined'
+        ? isNativeMethodValidatesThis(
+            CanvasRenderingContext2D.prototype.measureText,
+          )
+        : null,
+    // getParameter on WebGL1 prototype — WebGL2 inherits it. Receiver
+    // validation throws if `this` isn't a WebGLRenderingContext. GPU
+    // spoofs almost always wrap this; behavioral check catches the
+    // permissive shape.
+    webglGetParameter:
+      typeof WebGLRenderingContext !== 'undefined'
+        ? isNativeMethodValidatesThis(
+            WebGLRenderingContext.prototype.getParameter,
+          )
         : null,
   };
 
