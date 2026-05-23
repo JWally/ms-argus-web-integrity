@@ -123,5 +123,29 @@ export interface StatusFingerprint {
      * so a tampered RNG = predictable IV = potential ciphertext analysis.
      */
     cryptoGetRandomValues: boolean | null;
+    /**
+     * Native shape check + variance over 32 samples > 0.01. Real
+     * `Math.random` has variance ≈ 1/12; audio/canvas-evasion frameworks
+     * commonly replace it with a fixed-value stub (variance 0). Catches
+     * non-Proxy attacks against the RNG path too.
+     */
+    mathRandom: boolean | null;
+    /**
+     * `CanvasRenderingContext2D.prototype.measureText.call({}, 'x')` MUST
+     * throw TypeError (receiver validation). A Proxy apply trap that
+     * forwards to a fake TextMetrics object slips past the lie scanner
+     * but can't fake this. Critical for canvas fingerprint integrity —
+     * `measureText` is the primary signal for the §1.1 font-width path.
+     */
+    canvasMeasureText: boolean | null;
+    /**
+     * `WebGLRenderingContext.prototype.getParameter.call({}, 0x1F00)` MUST
+     * throw TypeError (receiver validation). WebGL fingerprint slot is
+     * one of the highest-entropy signals in the SDK; a stub that returns
+     * fake renderer strings hides the real GPU. WebGL2 inherits the
+     * prototype so this check covers both. Null when WebGL is absent
+     * (Safari Tahoe iframe, certain mobile webviews).
+     */
+    webglGetParameter: boolean | null;
   };
 }
