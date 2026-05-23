@@ -206,11 +206,30 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
     // window where a fake perf.now most visibly diverges from real wall
     // time. We bracket only this loop with the second clock to keep
     // overhead low.
+    // Multi-clock bracket on the heaviest bucket. Each clock is on
+    // independent infrastructure, so an attacker has to spoof all four
+    // in lockstep to hide:
+    //   perf.now    — patched by v4+ (replacement) and v5/6/7 (Proxy)
+    //   Date.now    — patched by v7 (Proxy on the static)
+    //   +new Date() — routes through DateConstructor::Construct, not
+    //                 Date.now. v7 leaves it untouched. h04 validation.
+    //   perf.measure(start, end).duration — uses C++ time captured at
+    //                 mark-call, doesn't re-read perf.now at query time.
+    let perfMark: ((name: string) => void) | undefined;
+    try {
+      perfMark = perf.mark.bind(perf);
+    } catch {
+      perfMark = undefined;
+    }
+    perfMark?.('arg-h-s');
     const t2 = perf.now();
     const d2 = dateNow();
+    const w2 = +new win.Date();
     for (let i = 0; i < N; i++) con.log(HEAVY);
-    const t3 = perf.now();
+    const w3 = +new win.Date();
     const d3 = dateNow();
+    const t3 = perf.now();
+    perfMark?.('arg-h-e');
 
     const t4 = perf.now();
     for (let i = 0; i < N; i++) con.dir(HEAVY);
@@ -234,13 +253,37 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
     const logHeavyUs = ((t3 - t2) * 1000) / N;
     const dirHeavyUs = ((t5 - t4) * 1000) / N;
     const tlHeavyUs = ((d3 - d2) * 1000) / N;
+    const wallHeavyUs = ((w3 - w2) * 1000) / N;
     const mathLoopUs = ((t7 - t6) * 1000) / M;
+
+    // Resolve the measure() entry corresponding to the perfMark pair
+    // bracketing the heavy loop. Skipped entirely if perf.mark wasn't
+    // available, or if measure/getEntriesByName threw (some embedded
+    // realms with cut-down Performance APIs).
+    let measureHeavyUs: number | undefined;
+    if (perfMark) {
+      try {
+        perf.measure('arg-h', 'arg-h-s', 'arg-h-e');
+        const entries = perf.getEntriesByName('arg-h');
+        const last = entries[entries.length - 1];
+        if (last && Number.isFinite(last.duration)) {
+          measureHeavyUs = round2((last.duration * 1000) / N);
+        }
+        perf.clearMarks('arg-h-s');
+        perf.clearMarks('arg-h-e');
+        perf.clearMeasures('arg-h');
+      } catch {
+        measureHeavyUs = undefined;
+      }
+    }
 
     return {
       log_tiny_us: round2(logTinyUs),
       log_heavy_us: round2(logHeavyUs),
       dir_heavy_us: round2(dirHeavyUs),
       tl_heavy_us: round2(tlHeavyUs),
+      wall_heavy_us: round2(wallHeavyUs),
+      measure_heavy_us: measureHeavyUs,
       math_loop_us: round2(mathLoopUs),
       heavy_over_tiny: round2(logHeavyUs / Math.max(logTinyUs, 0.01)),
       perf_now_native: perfNowNative,

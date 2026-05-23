@@ -172,11 +172,22 @@ try {
   for (let i = 0; i < N; i++) con.log('a');
   const t1 = perf.now();
 
+  // Multi-clock bracket (matches getConsoleTiming.ts iframe bench).
+  // Worker realm is already resistant to main-thread addInitScript
+  // patches (init scripts don't propagate), but the same four-clock
+  // schema keeps payload parity and catches attackers who also patch
+  // inside the worker via wrapped Worker/Blob/URL.createObjectURL.
+  let perfMark;
+  try { perfMark = perf.mark.bind(perf); } catch (_) { perfMark = undefined; }
+  if (perfMark) perfMark('arg-h-s');
   const t2 = perf.now();
   const d2 = dateNow();
+  const w2 = +new self.Date();
   for (let i = 0; i < N; i++) con.log(HEAVY);
-  const t3 = perf.now();
+  const w3 = +new self.Date();
   const d3 = dateNow();
+  const t3 = perf.now();
+  if (perfMark) perfMark('arg-h-e');
 
   const t4 = perf.now();
   for (let i = 0; i < N; i++) con.dir(HEAVY);
@@ -194,7 +205,25 @@ try {
   const logHeavyUs = ((t3 - t2) * 1000) / N;
   const dirHeavyUs = ((t5 - t4) * 1000) / N;
   const tlHeavyUs = ((d3 - d2) * 1000) / N;
+  const wallHeavyUs = ((w3 - w2) * 1000) / N;
   const mathLoopUs = ((t7 - t6) * 1000) / M;
+
+  let measureHeavyUs;
+  if (perfMark) {
+    try {
+      perf.measure('arg-h', 'arg-h-s', 'arg-h-e');
+      const entries = perf.getEntriesByName('arg-h');
+      const last = entries[entries.length - 1];
+      if (last && Number.isFinite(last.duration)) {
+        measureHeavyUs = round2((last.duration * 1000) / N);
+      }
+      perf.clearMarks('arg-h-s');
+      perf.clearMarks('arg-h-e');
+      perf.clearMeasures('arg-h');
+    } catch (_) {
+      measureHeavyUs = undefined;
+    }
+  }
 
   self.postMessage({
     ok: true,
@@ -203,6 +232,8 @@ try {
       log_heavy_us: round2(logHeavyUs),
       dir_heavy_us: round2(dirHeavyUs),
       tl_heavy_us: round2(tlHeavyUs),
+      wall_heavy_us: round2(wallHeavyUs),
+      measure_heavy_us: measureHeavyUs,
       math_loop_us: round2(mathLoopUs),
       heavy_over_tiny: round2(logHeavyUs / Math.max(logTinyUs, 0.01)),
       perf_now_native: perfNowNative,
