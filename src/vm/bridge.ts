@@ -262,11 +262,14 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
 
   // ── Payload composition helpers ───────────────────────────────────
 
-  // 0x10: fresh session UUID. Hooking this only leaks a correlation id, which
-  // is immediately visible server-side on the decrypted payload anyway —
-  // swapping it doesn't defeat the fingerprint.
+  // 0x10: fresh session UUID. Sourced from the iframe-pristine
+  // `randomUUID` so a page-realm hook on `Crypto.prototype.randomUUID`
+  // can't force collisions or mark sessions covertly. The fallback
+  // chain inside `pristine.randomUUID` (iframe → iframe-rng + manual
+  // v4 → top-level) keeps it honest even if the iframe path is
+  // partially available. See CASTLE-TO-ARGUS §3.3.
   bridge.register(BridgeApi.GET_PAYLOAD_UUID, {
-    get: () => crypto.randomUUID(),
+    get: () => pristine.randomUUID(),
   });
 
   // 0x11: meta sub-object (version + timing). Raw object, read-only from the
@@ -500,7 +503,15 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       const encoded = pristine.textEncode(payloadJSON);
       const compressed = deflateRaw(encoded);
 
-      const iv = crypto.getRandomValues(new Uint8Array(12));
+      // pristine.getRandomValues for the AES-GCM IV (CASTLE-TO-ARGUS §3.3
+      // inline use-site closure). The status-slice native-integrity probe
+      // sees scan-time RNG state only; an attacker who installs a Proxy
+      // on Crypto.prototype.getRandomValues *after* status collection
+      // produces a true scan-time check but a predictable IV at this
+      // line. The pristine iframe ref doesn't inherit page-realm hooks
+      // on Crypto.prototype, so we're reading from a structurally
+      // independent RNG. Use here is identical-shape to crypto.getRandomValues.
+      const iv = pristine.getRandomValues(new Uint8Array(12));
       const ciphertext = await subtle.encrypt(
         { name: 'AES-GCM', iv },
         aesKey,

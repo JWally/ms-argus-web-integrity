@@ -147,5 +147,26 @@ export interface StatusFingerprint {
      * (Safari Tahoe iframe, certain mobile webviews).
      */
     webglGetParameter: boolean | null;
+    /**
+     * Cross-realm identity check: page-realm
+     * `Crypto.prototype.getRandomValues` source text matches the
+     * iframe-pristine version. A page-only hook (the common
+     * addInitScript shape) replaces only the top-level prototype and
+     * doesn't propagate to nested iframes — this catches that exact
+     * attack class even though the bridge already uses the pristine
+     * ref. Signal value is "attacker patched at page level even though
+     * we don't use it" — strong tamper evidence.
+     *
+     * Null when the lift failed or RNG is absent.
+     */
+    rngCrossRealmMatch: boolean | null;
+    /**
+     * Same cross-realm check for `Crypto.prototype.randomUUID`. Bridge
+     * uses pristine ref for payload UUID; this signal flags page-realm
+     * hooks that target session-correlation tagging.
+     *
+     * Null when randomUUID is unavailable in either realm.
+     */
+    randomUuidCrossRealmMatch: boolean | null;
   };
 }
