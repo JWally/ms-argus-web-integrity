@@ -116,6 +116,34 @@ export interface NavigatorFingerprint {
   /** Navigator prototype property names */
   properties: string[] | undefined;
 
+  /**
+   * Indexed Navigator.prototype enumeration (fpjs s166).
+   * `l` = count of own properties on the prototype;
+   * `p` = ordered `{i, n}` pairs where `i` is the property index and
+   * `n` is the property name. Insertion order carries entropy that
+   * `properties` (unordered name list) loses — automation polyfills,
+   * privacy-shield suppressions, and Chrome version drift all show up
+   * here.
+   */
+  propertiesIndexed:
+    | { l: number; p: Array<{ i: number; n: string }> }
+    | undefined;
+
+  /**
+   * navigator.keyboard.getLayoutMap() result (DataDome pattern).
+   * Chromium-only API (~70% browser coverage); when supported, returns
+   * the OS-set physical-key → glyph mapping. Real users have language-
+   * specific layouts baked at OS level (DE-QWERTZ has `Y → y` swapped,
+   * FR-AZERTY has `2 → é`, BR-ABNT2 has `ç`); bots inherit US-QWERTY
+   * from the host Linux server regardless of UA-CH language claim.
+   *
+   * Server cross-check: layout glyph set vs UA-CH languages[0] +
+   * Accept-Language. Mismatch = high-signal automation tell.
+   */
+  keyboardLayout:
+    | { supported: boolean; layout: Record<string, string> | null }
+    | undefined;
+
   /** User-Agent Client Hints (high entropy) */
   userAgentData: UserAgentData | undefined;
 

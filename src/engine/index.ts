@@ -10,6 +10,7 @@
  * - `layoutEngine`          — detected render engine from CSS/DOM behavior
  * - `errors[]`              — raw error messages per trigger (vary by engine version)
  * - `stackFormatHash`       — hash of normalized stack trace structure
+ * - `stackRaw`              — raw stack string sample (URLs scrubbed, frames intact) for fpjs-s119-style server analysis
  * - `evalToStringLength`    — eval.toString().length (constant per engine)
  * - `functionToStringLength`— Function.toString.call(eval).length (constant per engine)
  *
@@ -321,6 +322,31 @@ function getStackFormatHash(): string {
 }
 
 /**
+ * Capture the raw stack-trace string with only the origin URL scrubbed —
+ * function names, line:col, "at" / "@" formatting, async wrappers all
+ * preserved. Mirrors FingerprintJS v4 slot s119; the goal is per-engine
+ * + per-version + per-build entropy that the normalized stackFormatHash
+ * intentionally strips out.
+ *
+ * Server-side: the bundle URL is scrubbed but line:col is kept because
+ * minifier/bundler choices encode browser-build identity. Truncated to
+ * 600 chars to keep payload small (real stacks are usually 200-400).
+ */
+function getStackRaw(): string {
+  try {
+    // @ts-expect-error intentional null method call
+    null[0]();
+  } catch (e: any) {
+    const stack = (e.stack || '').toString();
+    // Strip only the origin host so different deploy URLs don't fragment
+    // server-side analysis. Keep paths/line/col/frame structure intact.
+    const scrubbed = stack.replace(/https?:\/\/[^/\s]+/g, 'ORIGIN');
+    return scrubbed.length > 600 ? scrubbed.slice(0, 600) : scrubbed;
+  }
+  return '';
+}
+
+/**
  * Returns eval.toString().length — constant per engine.
  *
  * SERVER-SIDE: cross-validate against jsEngine.
@@ -358,6 +384,7 @@ export default function getConsoleErrors():
     const jsEngine = detectJSEngine();
     const layoutEngine = detectLayoutEngine();
     const stackFormatHash = getStackFormatHash();
+    const stackRaw = getStackRaw();
     const evalToStringLength = getEvalToStringLength();
     const functionToStringLength = getFunctionToStringLength();
 
@@ -367,6 +394,7 @@ export default function getConsoleErrors():
       jsEngine,
       layoutEngine,
       stackFormatHash,
+      stackRaw,
       evalToStringLength,
       functionToStringLength,
     };

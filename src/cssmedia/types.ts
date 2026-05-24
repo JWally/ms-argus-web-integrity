@@ -58,4 +58,11 @@ export interface CSSMediaFingerprint {
   matchMediaCSS: MediaFeatures;
   /** Screen dimensions from CSS media query probing */
   screenQuery: ScreenQuery;
+  /**
+   * CSS calc() subpixel resolution string (fpjs slot s203).
+   * The exact form an engine emits when parsing
+   * `calc(0.207912px)` — varies by engine, version, and rounding rules.
+   * Cheap one-shot engine + version oracle.
+   */
+  calcSubpixel: string;
 }

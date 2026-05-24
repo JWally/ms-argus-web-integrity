@@ -36,6 +36,39 @@
  *   </script>
  */
 
+/**
+ * Caller-supplied attestation request — the iframe signs this with the
+ * device's persistent keypair after the integrity scan completes and
+ * returns the result inside the run() promise.
+ *
+ * See src/utils/attestation.ts for envelope shape and verification notes.
+ */
+interface AttestRequest {
+  /**
+   * Namespace tag for the signature (signed into the envelope). Verifiers
+   * must check this matches the purpose they expect — prevents accidental
+   * signature reuse across different protocols on the same device key.
+   * Convention: reserve `argus-*` prefix for Argus flows.
+   */
+  purpose: string;
+  /** Caller-supplied JSON-serializable payload. Signed verbatim. */
+  payload?: unknown;
+  /** TTL in seconds; clamped server-side to [1, 300]. Default 60. */
+  ttlSeconds?: number;
+}
+
+/** The signed attestation returned inside RunResult.attestation. */
+interface Attestation {
+  /** base64url-encoded envelope JSON ({v, purpose, payload, iat, exp, keyId}). */
+  envelope: string;
+  /** base64-encoded ECDSA-P256-SHA-256 signature over the envelope bytes. */
+  signature: string;
+  /** base64-encoded SPKI public key. */
+  publicKey: string;
+  /** Short fingerprint of the public key — useful for cross-assertion matching. */
+  keyId: string;
+}
+
 /** Options passed to window.argus.run(). */
 interface RunOptions {
   /** Merchant-provided correlation id, round-tripped back on completion. */
@@ -50,6 +83,12 @@ interface RunOptions {
   cpi?: string;
   /** Milliseconds to wait before rejecting the returned Promise. 0 disables. Default 10000. */
   timeoutMs?: number;
+  /**
+   * If set, the iframe builds a signed assertion alongside the integrity
+   * scan and returns it on result.attestation. Cheap — uses the same
+   * keypair the SDK already maintains for integrity-collect signing.
+   */
+  attest?: AttestRequest;
 }
 
 /** Resolved value from a successful run. */
@@ -60,6 +99,13 @@ interface RunResult {
   argusSessionId: string;
   /** Run duration from Promise construction to result in ms. */
   durationMs: number;
+  /**
+   * Signed assertion if `opts.attest` was supplied. Null if not requested,
+   * undefined if requested but signing failed (see attestError).
+   */
+  attestation?: Attestation | null;
+  /** Error message if attestation was requested but signing failed. */
+  attestError?: string | null;
 }
 
 interface LoaderState {
@@ -137,10 +183,16 @@ function generateRunId(): string {
   }
 }
 
+function b64urlEncodeJson(v: unknown): string {
+  const json = JSON.stringify(v);
+  return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 function innerScriptUrl(
   runId: string,
   sessionId: string | null,
   cpi: string | null,
+  attest: AttestRequest | null,
   opts: { pageUrl: string; referrer: string },
 ): string {
   if (!loaderLocation) {
@@ -154,6 +206,15 @@ function innerScriptUrl(
   q.set('runId', runId);
   if (sessionId) q.set('sessionId', sessionId);
   if (cpi) q.set('cpi', cpi);
+  if (attest) {
+    q.set('attestPurpose', attest.purpose);
+    if (attest.payload !== undefined) {
+      q.set('attestPayload', b64urlEncodeJson(attest.payload));
+    }
+    if (typeof attest.ttlSeconds === 'number') {
+      q.set('attestTtl', String(attest.ttlSeconds));
+    }
+  }
   if (opts.pageUrl) q.set('pageUrl', opts.pageUrl);
   if (opts.referrer) q.set('referrer', opts.referrer);
   return url.toString();
@@ -179,13 +240,19 @@ function rejectPending(reason: string): void {
   if (p) p.reject(new Error(`argus: ${reason}`));
 }
 
-function resolvePending(data: { argusSessionId?: string }): void {
+function resolvePending(data: {
+  argusSessionId?: string;
+  attestation?: Attestation | null;
+  attestError?: string | null;
+}): void {
   const p = clearPending();
   if (!p) return;
   p.resolve({
     sessionId: p.sessionId,
     argusSessionId: data.argusSessionId ?? '',
     durationMs: performance.now() - p.startMs,
+    attestation: data.attestation ?? null,
+    attestError: data.attestError ?? null,
   });
 }
 
@@ -241,13 +308,18 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
     typeof opts.cpi === 'string' && opts.cpi.length > 0 ? opts.cpi : null;
   const timeoutMs =
     typeof opts.timeoutMs === 'number' ? opts.timeoutMs : DEFAULT_TIMEOUT_MS;
+  const attest =
+    opts.attest && typeof opts.attest.purpose === 'string' ? opts.attest : null;
 
   const pageUrl = capturePageUrl();
   const referrer = document.referrer ?? '';
 
   let innerUrl: string;
   try {
-    innerUrl = innerScriptUrl(runId, sessionId, cpi, { pageUrl, referrer });
+    innerUrl = innerScriptUrl(runId, sessionId, cpi, attest, {
+      pageUrl,
+      referrer,
+    });
   } catch (err) {
     return Promise.reject(err as Error);
   }
@@ -264,7 +336,11 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
       if (!data || typeof data !== 'object') return;
       if (data.runId !== runId) return;
       if (data.argusDone === true) {
-        const result = (data.result ?? {}) as { argusSessionId?: string };
+        const result = (data.result ?? {}) as {
+          argusSessionId?: string;
+          attestation?: Attestation | null;
+          attestError?: string | null;
+        };
         resolvePending(result);
       } else if (data.argusDone === false) {
         const errMsg =
@@ -323,6 +399,22 @@ interface ArgusGlobal {
   run(opts?: RunOptions): Promise<RunResult>;
   destroy(): void;
   _state: LoaderState;
+  /**
+   * Convenience wrapper — runs a full integrity scan and returns just
+   * the device's persistent public key + keyId. Triggers a full run()
+   * (the keypair is held inside the integrity iframe), so callers who
+   * also want the integrity scan result should call `run()` directly
+   * instead of this method.
+   */
+  getDevicePublicKey(): Promise<{ publicKey: string; keyId: string }>;
+  /**
+   * Convenience wrapper — runs a full integrity scan and signs a
+   * structured assertion with the device's persistent keypair. Equivalent
+   * to `run({ attest: opts }).then(r => r.attestation)`, but discards the
+   * integrity scan id. Use `run({ attest: ... })` directly if you also
+   * need the integrity scan result.
+   */
+  signAssertion(opts: AttestRequest): Promise<Attestation>;
 }
 
 /**
@@ -397,7 +489,45 @@ function scheduleAutoRun(mode: ScheduleMode, fire: () => void): void {
   );
 }
 
-const argus: ArgusGlobal = { run, destroy, _state: state };
+async function getDevicePublicKey(): Promise<{
+  publicKey: string;
+  keyId: string;
+}> {
+  // Spin a minimal run() solely to extract the pubkey. Caller probably
+  // wants run() directly if they also want the integrity scan; this is
+  // here for completeness so the "get my device public key" use case has
+  // a clear surface.
+  const result = await run({
+    attest: { purpose: 'argus-pubkey-export-v1', ttlSeconds: 1 },
+  });
+  if (!result.attestation) {
+    throw new Error(
+      `argus: getDevicePublicKey failed: ${result.attestError ?? 'no attestation returned'}`,
+    );
+  }
+  return {
+    publicKey: result.attestation.publicKey,
+    keyId: result.attestation.keyId,
+  };
+}
+
+async function signAssertion(opts: AttestRequest): Promise<Attestation> {
+  const result = await run({ attest: opts });
+  if (!result.attestation) {
+    throw new Error(
+      `argus: signAssertion failed: ${result.attestError ?? 'no attestation returned'}`,
+    );
+  }
+  return result.attestation;
+}
+
+const argus: ArgusGlobal = {
+  run,
+  destroy,
+  _state: state,
+  getDevicePublicKey,
+  signAssertion,
+};
 
 const win = window as unknown as Record<string, unknown>;
 if (win.argus) {

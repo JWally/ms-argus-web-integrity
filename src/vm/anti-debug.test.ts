@@ -59,8 +59,8 @@ function makeBridge(opts: {
   });
   bridge.register(BridgeApi.GET_SESSION_TOKEN, { get: () => 'sessiontoken' });
 
-  // Slices 0x50..0x62
-  for (let id = 0x50; id <= 0x62; id++) {
+  // Slices 0x50..0x65 (last three are FPJS-parity: canvas, audio, fonts)
+  for (let id = 0x50; id <= 0x65; id++) {
     bridge.register(id, { get: () => fakeSlice });
   }
 

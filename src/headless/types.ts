@@ -275,6 +275,19 @@ export interface CdpSignals {
    * Analyzer treats false as hard-residue evidence on its own.
    */
   ownPropsNative: boolean;
+  /**
+   * isTrusted event probe (fpjs s165). Dispatches a synthetic event
+   * via `dispatchEvent`, captures `event.isTrusted` in the handler.
+   *   - `value: false` → expected for a real browser; script-dispatched
+   *     events are always untrusted.
+   *   - `value: true` → automation tooling is lying about isTrusted
+   *     (CDP-driven Input.dispatchMouseEvent yields true; some stealth
+   *     scripts patch Event.prototype incorrectly).
+   *   - `value: null` (with threw=false) → handler never fired; weird
+   *     event-system state.
+   *   - `threw: true` → environment lacks Event constructor or DOM.
+   */
+  isTrustedProbe: { value: boolean | null; threw: boolean };
 }
 
 export type PlatformScores = Record<string, number>;

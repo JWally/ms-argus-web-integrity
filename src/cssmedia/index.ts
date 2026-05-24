@@ -360,8 +360,30 @@ export default function getCSSMedia(): CSSMediaFingerprint | undefined {
     // Probe actual screen dimensions via CSS
     const screenQuery = getScreenMedia(body, width, height);
 
+    // CSS calc() subpixel result — mirrors FingerprintJS slot s203.
+    // Engines round subpixel math differently across browser versions
+    // and CPU architectures. The constant 0.207912 is a transcendental-
+    // derived value (sin(0.21) rounded) chosen so the resolved pixel
+    // string carries that floating-point quirk:
+    //   Chrome: "calc(0.207912px)" or "0.207912px"
+    //   Firefox: "calc(0.207912px)"
+    //   Safari: "0.207912px"
+    // The exact resolved-style string is a cheap engine + version probe.
+    const calcSubpixel = (() => {
+      try {
+        const probe = win.document.createElement('div');
+        probe.style.setProperty('width', 'calc(0.207912px)');
+        // Don't actually attach — getComputedStyle returns parsed `style`
+        // values regardless of mount state for simple length values.
+        // Some engines normalize earlier than others; we ship the raw.
+        return probe.style.getPropertyValue('width');
+      } catch {
+        return '';
+      }
+    })();
+
     logTestResult({ time: timer.stop(), test: 'css media', passed: true });
-    return { mediaCSS, matchMediaCSS, screenQuery };
+    return { mediaCSS, matchMediaCSS, screenQuery, calcSubpixel };
   } catch (error) {
     logTestResult({ test: 'css media', passed: false });
     captureError(error as Error);

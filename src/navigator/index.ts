@@ -684,7 +684,60 @@ export default async function getNavigator(
         const keys = Object.keys(Object.getPrototypeOf(navigator));
         return keys;
       }, 'navigator keys failed'),
+
+      /**
+       * Indexed Navigator.prototype enumeration — `{l: count, p: [{i, n}, ...]}`.
+       * Mirrors FingerprintJS slot s166. Captures **insertion order** of
+       * own properties on Navigator.prototype which:
+       *   - Chrome version drift adds new methods (count changes)
+       *   - Automation polyfills insert properties at non-native indices
+       *   - Tor/RFP suppressed APIs leave gaps
+       *
+       * The plain `properties` array above is unordered; this captures the
+       * ordered index → name pairs which carry materially more entropy
+       * than the count alone.
+       */
+      propertiesIndexed: attempt(() => {
+        const proto = Object.getPrototypeOf(navigator);
+        const names = Object.getOwnPropertyNames(proto);
+        return {
+          l: names.length,
+          p: names.map((n, i) => ({ i, n })),
+        };
+      }, 'navigator propertiesIndexed failed'),
     };
+
+    // Keyboard layout map (Chromium-only). The physical-key → glyph
+    // mapping is set by the OS keyboard layout, NOT by Chrome's UA-CH
+    // language list. Bots inherit the host OS default (US-QWERTY on
+    // Linux servers); real users have language-specific layouts (German
+    // QWERTZ, French AZERTY, Brazilian ABNT2). Mismatch vs UA-CH
+    // languages[0] / Accept-Language is a strong tampering signal.
+    //
+    // ~70% browser coverage (Firefox + Safari lack getLayoutMap).
+    const keyboardLayout = await (async () => {
+      try {
+        const kb = (navigator as any).keyboard;
+        if (!kb || typeof kb.getLayoutMap !== 'function') {
+          return { supported: false, layout: null };
+        }
+        const map = await kb.getLayoutMap();
+        // Convert to plain object, capped to ~50 entries for payload size.
+        // Sort keys so the emitted map is order-stable for hashing.
+        const entries: Array<[string, string]> = [];
+        for (const [code, glyph] of map.entries()) {
+          entries.push([String(code), String(glyph)]);
+          if (entries.length >= 50) break;
+        }
+        entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+        return {
+          supported: true,
+          layout: Object.fromEntries(entries) as Record<string, string>,
+        };
+      } catch {
+        return { supported: false, layout: null };
+      }
+    })();
 
     // Collect async data in parallel
     await queueEvent(timer);
@@ -718,6 +771,7 @@ export default async function getNavigator(
       webgpu,
       attributionSupport,
       networkInformation,
+      keyboardLayout,
       lied,
     };
   } catch (error) {

@@ -232,6 +232,9 @@ if (serverPubKey.length > 0) {
     windowPrefixes: __api_get(0x60),
     workerScope: __api_get(0x61),
     errors: __api_get(0x62),
+    canvas: __api_get(0x63),
+    audio: __api_get(0x64),
+    fonts: __api_get(0x65),
   };
 
   // Three-store client UUID (IDB + localStorage + first-party cookie).
