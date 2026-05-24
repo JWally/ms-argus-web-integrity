@@ -24,6 +24,13 @@
 import { collectIntegrity } from './integrity';
 import { runArgusVm } from './vm/argus-vm';
 import type { SigintConfig } from './utils/sigint';
+import {
+  buildEnvelope,
+  computeKeyId,
+  type Attestation,
+  type AttestationRequest,
+} from './utils/attestation';
+import { getCryptoId, signWithCryptoId } from './utils/get-crypto-id';
 
 // Baked in at build time via rollup replace. See rollup.config.mjs.
 declare const __ARGUS_API_BASE__: string;
@@ -47,6 +54,45 @@ const SCRIPT_PARAMS: URLSearchParams = (() => {
     return new URLSearchParams('');
   }
 })();
+
+/**
+ * Decode the attestation request from script-tag query params, if any. The
+ * loader passes:
+ *
+ *   attestPurpose   = caller-supplied purpose string
+ *   attestPayload   = base64url(JSON(caller-supplied payload))
+ *   attestTtl       = optional ttl in seconds (default applied downstream)
+ *
+ * If `attestPurpose` is absent, no attestation is requested. Returns null in
+ * that case so the iframe behaves exactly as before for un-tagged runs.
+ */
+function readAttestRequest(): AttestationRequest | null {
+  const purpose = SCRIPT_PARAMS.get('attestPurpose');
+  if (!purpose) return null;
+  const payloadB64 = SCRIPT_PARAMS.get('attestPayload') ?? '';
+  const ttlRaw = SCRIPT_PARAMS.get('attestTtl');
+  let payload: unknown = null;
+  if (payloadB64) {
+    try {
+      const padded =
+        payloadB64.replace(/-/g, '+').replace(/_/g, '/') +
+        '='.repeat((4 - (payloadB64.length % 4)) % 4);
+      payload = JSON.parse(atob(padded));
+    } catch {
+      throw new Error('argus-iframe: attestPayload not valid base64url-JSON');
+    }
+  }
+  const ttlSeconds = ttlRaw ? parseInt(ttlRaw, 10) : undefined;
+  return { purpose, payload, ttlSeconds };
+}
+
+async function buildAttestation(req: AttestationRequest): Promise<Attestation> {
+  const keys = await getCryptoId();
+  const keyId = await computeKeyId(keys.publicKey);
+  const { envelope } = buildEnvelope(req, keyId);
+  const signature = await signWithCryptoId(envelope);
+  return { envelope, signature, publicKey: keys.publicKey, keyId };
+}
 
 function postBack(msg: Record<string, unknown>): void {
   // srcdoc iframes share origin with parent. Loader validates replies by
@@ -111,14 +157,31 @@ async function main(): Promise<void> {
       return;
     }
 
-    // Post ONLY the opaque argusSessionId + merchant's echoed session id.
-    // The raw fingerprint never escapes this realm.
+    // Build the optional attestation. If the caller didn't request one
+    // (attestPurpose absent), `attestation` stays null and the message
+    // shape matches the legacy result exactly.
+    let attestation: Attestation | null = null;
+    let attestError: string | null = null;
+    try {
+      const attestReq = readAttestRequest();
+      if (attestReq) {
+        attestation = await buildAttestation(attestReq);
+      }
+    } catch (e) {
+      attestError = (e as Error).message;
+    }
+
+    // Post ONLY the opaque argusSessionId + merchant's echoed session id,
+    // plus the attestation (if requested). The raw fingerprint never
+    // escapes this realm.
     postBack({
       argusDone: true,
       runId,
       result: {
         argusSessionId: vm.sessionId,
         sessionId,
+        attestation,
+        attestError,
       },
     });
   } catch (err) {
