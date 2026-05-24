@@ -213,6 +213,113 @@ export async function getStorage(): Promise<number | null> {
 }
 
 /**
+ * Full storage.estimate() snapshot (DataDome pattern). Adds `usage`
+ * and `usageDetails` beyond the bare quota number `getStorage()`
+ * already returns.
+ *
+ * - Emulators report round values (250MB quota, 0B usage)
+ * - Real devices: idiosyncratic numbers (499.84GB quota, e.g. 47KB usage)
+ * - Throwaway/ephemeral profiles: quota caps at ~30MB
+ *
+ * Server cross-check: round quotas + zero usage = throwaway-emulator
+ * signal independent of canvas / audio / WebGL.
+ */
+// DDB-safe number clamp. The marshaller rejects values outside
+// Number.MIN_SAFE_INTEGER..Number.MAX_SAFE_INTEGER, so any number we
+// ship must fit. Some browsers report Number.MAX_VALUE for unlimited
+// storage quota; we cap to MAX_SAFE_INTEGER so the field becomes
+// "max storage" without crashing the marshaller.
+function safeN(n: number | null | undefined): number | null {
+  if (n == null || !Number.isFinite(n)) return null;
+  if (n > Number.MAX_SAFE_INTEGER) return Number.MAX_SAFE_INTEGER;
+  if (n < Number.MIN_SAFE_INTEGER) return Number.MIN_SAFE_INTEGER;
+  return n;
+}
+
+function safeNMap(
+  m: Record<string, number> | null | undefined,
+): Record<string, number> | null {
+  if (!m) return null;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(m)) {
+    const s = safeN(v);
+    if (s != null) out[k] = s;
+  }
+  return out;
+}
+
+export async function getStorageEstimate(): Promise<{
+  quota: number | null;
+  usage: number | null;
+  usageDetails: Record<string, number> | null;
+}> {
+  if (!navigator?.storage?.estimate) {
+    return { quota: null, usage: null, usageDetails: null };
+  }
+  try {
+    const e = await navigator.storage.estimate();
+    return {
+      quota: safeN(e.quota),
+      usage: safeN(e.usage),
+      usageDetails: safeNMap(
+        (e as { usageDetails?: Record<string, number> }).usageDetails,
+      ),
+    };
+  } catch {
+    return { quota: null, usage: null, usageDetails: null };
+  }
+}
+
+/**
+ * Bundle self-integrity hash (DataDome `ccsT` / `ccsH` pattern).
+ *
+ * Captures the SDK's own loader URL from `import.meta.url` and a
+ * stable identifier — the script's content-hash-bearing filename
+ * portion — without fetching the script body. If a service worker
+ * or in-flight bundle patch rewrote our loader URL/filename, this
+ * value won't match the server's expected baseline.
+ *
+ * Not a true content hash (we can't read our own bytes from inside
+ * an IIFE closure), but a cheap forgery indicator: any bundle-level
+ * rewrite that doesn't preserve the loader URL/filename trips it.
+ */
+function getBundleSelfHash(): {
+  loaderUrl: string | null;
+  loaderFilename: string | null;
+  stackOrigin: string | null;
+} {
+  let loaderUrl: string | null = null;
+  let loaderFilename: string | null = null;
+  let stackOrigin: string | null = null;
+  try {
+    loaderUrl = import.meta.url ?? null;
+    if (loaderUrl) {
+      const u = new URL(loaderUrl);
+      loaderFilename = u.pathname.split('/').pop() ?? null;
+    }
+  } catch {
+    /* import.meta unavailable */
+  }
+  try {
+    // Synthesize an error to read where we are at runtime.
+    // The first frame in `.stack` is THIS function; we want the next
+    // frame's URL/origin — that's the actual loader script.
+    const stack = new Error().stack ?? '';
+    const m = stack.match(/https?:\/\/[^\s)]+/);
+    if (m) {
+      try {
+        stackOrigin = new URL(m[0]).origin;
+      } catch {
+        stackOrigin = m[0].slice(0, 80);
+      }
+    }
+  } catch {
+    /* stack unavailable */
+  }
+  return { loaderUrl, loaderFilename, stackOrigin };
+}
+
+/**
  * Gets the size of the current script.
  *
  * Script size can indicate:
@@ -251,15 +358,24 @@ async function getScriptSize(): Promise<number | null> {
  * @returns System status fingerprint data
  */
 export async function getStatus(): Promise<StatusFingerprint> {
-  const [batteryInfo, quotaA, quotaB, scriptSize, stackSize, timingRes] =
-    await Promise.all([
-      getBattery(),
-      getStorage(),
-      getStorage(), // Called twice to detect randomization
-      getScriptSize(),
-      getMaxCallStackSize(),
-      getTimingResolution(),
-    ]);
+  const [
+    batteryInfo,
+    quotaA,
+    quotaB,
+    scriptSize,
+    stackSize,
+    timingRes,
+    storageEstimate,
+  ] = await Promise.all([
+    getBattery(),
+    getStorage(),
+    getStorage(), // Called twice to detect randomization
+    getScriptSize(),
+    getMaxCallStackSize(),
+    getTimingResolution(),
+    getStorageEstimate(),
+  ]);
+  const bundleSelfHash = getBundleSelfHash();
 
   // Probe runs sequentially AFTER the rest of the status collection so it
   // gets a quiet main thread for its 2s liveness race. When the probe was
@@ -407,5 +523,7 @@ export async function getStatus(): Promise<StatusFingerprint> {
     scriptSize,
     iframeCrypto,
     nativeIntegrity,
+    storageEstimate,
+    bundleSelfHash,
   };
 }

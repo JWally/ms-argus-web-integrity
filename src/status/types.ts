@@ -169,4 +169,26 @@ export interface StatusFingerprint {
      */
     randomUuidCrossRealmMatch: boolean | null;
   };
+  /**
+   * Full storage.estimate() snapshot — quota + usage + usageDetails
+   * (per-bucket: indexedDB, caches, serviceWorkerRegistrations, …).
+   * Emulator detection: round quota + zero usage = throwaway profile.
+   */
+  storageEstimate: {
+    quota: number | null;
+    usage: number | null;
+    usageDetails: Record<string, number> | null;
+  };
+  /**
+   * Bundle-loader integrity proxy (DataDome ccsT/ccsH pattern).
+   * Captures the SDK loader's URL + filename + a stack-derived origin.
+   * Not a content hash — but any in-flight bundle rewrite (service
+   * worker, extension swap) that doesn't preserve all three fields
+   * trips a server-side mismatch.
+   */
+  bundleSelfHash: {
+    loaderUrl: string | null;
+    loaderFilename: string | null;
+    stackOrigin: string | null;
+  };
 }

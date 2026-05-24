@@ -146,6 +146,10 @@ export const enum BridgeApi {
   SLICE_WINDOW_PREFIXES = 0x60,
   SLICE_WORKER_SCOPE = 0x61,
   SLICE_ERRORS = 0x62,
+  // FPJS-parity slices (FPJS-TO-ARGUS.md §8.1) — device fingerprinting.
+  SLICE_CANVAS = 0x63,
+  SLICE_AUDIO = 0x64,
+  SLICE_FONTS = 0x65,
 }
 
 export interface ArgusVmContext {
@@ -311,6 +315,10 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   });
   bridge.register(BridgeApi.SLICE_WORKER_SCOPE, { get: () => fp.workerScope });
   bridge.register(BridgeApi.SLICE_ERRORS, { get: () => fp.errors });
+  // FPJS-parity slices (FPJS-TO-ARGUS.md §8.1).
+  bridge.register(BridgeApi.SLICE_CANVAS, { get: () => fp.canvas });
+  bridge.register(BridgeApi.SLICE_AUDIO, { get: () => fp.audio });
+  bridge.register(BridgeApi.SLICE_FONTS, { get: () => fp.fonts });
 
   // 0x14: get server public key
   bridge.register(BridgeApi.GET_SERVER_PUB_KEY, {

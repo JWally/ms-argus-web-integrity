@@ -33,6 +33,14 @@ export interface ConsoleErrorsFingerprint {
   layoutEngine: LayoutEngine;
   /** Hash of normalized stack trace structure — varies by engine, stable across versions */
   stackFormatHash: string;
+  /**
+   * Raw stack-trace sample with URLs/origins scrubbed but frame internals
+   * intact. Captures Chrome/Firefox/Safari version drift and function-name
+   * patterns the engine emits ("at Object.<anonymous>", "@", spaces).
+   * Mirrors FingerprintJS v4 slot s119 — server hashes/parses flexibly.
+   * Capped at 600 chars to keep payload small.
+   */
+  stackRaw: string;
   /** eval.toString().length — constant per engine, cross-validate server-side */
   evalToStringLength: number;
   /** Function.toString.call(eval).length — constant per engine, cross-validate server-side */
