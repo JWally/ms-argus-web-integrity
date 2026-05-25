@@ -31,6 +31,7 @@ import {
   type AttestationRequest,
 } from './utils/attestation';
 import { getCryptoId, signWithCryptoId } from './utils/get-crypto-id';
+import { getPristineRefs } from './utils/pristine-iframe';
 
 // Baked in at build time via rollup replace. See rollup.config.mjs.
 declare const __ARGUS_API_BASE__: string;
@@ -77,7 +78,10 @@ function readAttestRequest(): AttestationRequest | null {
       const padded =
         payloadB64.replace(/-/g, '+').replace(/_/g, '/') +
         '='.repeat((4 - (payloadB64.length % 4)) % 4);
-      payload = JSON.parse(atob(padded));
+      // Pristine JSON.parse so a page-realm hook can't see the
+      // attest payload or substitute alternate values before it
+      // gets fed into the to-be-signed envelope.
+      payload = getPristineRefs().parse(atob(padded));
     } catch {
       throw new Error('argus-iframe: attestPayload not valid base64url-JSON');
     }

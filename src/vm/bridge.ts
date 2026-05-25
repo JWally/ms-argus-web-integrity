@@ -371,7 +371,13 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         for (let i = 0; i < raw.length; i++) {
           bytes[i] = raw.charCodeAt(i) & 0xff;
         }
-        const sigBuf = await crypto.subtle.sign(
+        // Sign with the iframe-pristine subtle (same realm as
+        // get-crypto-id used to generate cryptoId.privateKey) so a
+        // page-realm hook on crypto.subtle.sign can't see the
+        // to-be-signed bytes or substitute an attacker signature.
+        // Falls back to top-level only if iframe lift failed.
+        const signSubtle = iframeCrypto ?? crypto.subtle;
+        const sigBuf = await signSubtle.sign(
           { name: 'ECDSA', hash: 'SHA-256' },
           cryptoId.privateKey,
           bytes,

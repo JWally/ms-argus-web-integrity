@@ -50,7 +50,12 @@ function bucketToBytes(bucket: number): Uint8Array {
 }
 
 async function sha256(input: Uint8Array): Promise<Uint8Array> {
-  const h = await crypto.subtle.digest('SHA-256', input as BufferSource);
+  // Route through pristine subtle so a page-realm hook on
+  // crypto.subtle.digest can't see the salt + "argus-vm-k-/"argus-vm-t-"
+  // prefix being hashed or substitute a controlled hash output. Falls back
+  // to top-level only if the iframe lift failed (lifted === false).
+  const subtle = getPristineRefs().subtle ?? crypto.subtle;
+  const h = await subtle.digest('SHA-256', input as BufferSource);
   return new Uint8Array(h);
 }
 

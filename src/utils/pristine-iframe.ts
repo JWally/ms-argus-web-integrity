@@ -82,7 +82,15 @@ export interface PristineRefs {
    * True if all references were successfully lifted from the iframe.
    * False if any fell back to top-level globals — indicates the
    * session is running unhardened (very early page lifecycle,
-   * sandboxed environment, etc.).
+   * sandboxed environment, or attacker-induced iframe-creation failure
+   * intended to neutralize the pristine-routed hardening).
+   *
+   * Shipped on the wire as `device.status.pristine.lifted` (see
+   * `src/status/index.ts` and the `pristine` field on StatusFingerprint
+   * in `src/status/types.ts`). Server-side scoring uses it as a soft
+   * tampering signal, combined with the `getRandomValuesNativeSource`
+   * / `randomUUIDNativeSource` snapshots above for tamper-evidence
+   * cross-checking.
    */
   lifted: boolean;
 }

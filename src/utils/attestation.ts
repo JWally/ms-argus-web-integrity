@@ -134,16 +134,18 @@ export function buildEnvelope(
     keyId,
   };
 
+  const pristine = getPristineRefs();
   let json: string;
   try {
-    json = JSON.stringify(body);
+    // Pristine JSON.stringify so a page-realm hook can't see the
+    // to-be-signed envelope plaintext or substitute alternate JSON.
+    json = pristine.stringify(body);
   } catch (e) {
     throw new Error(
       `attestation: payload not JSON-serializable (${String(e)})`,
     );
   }
 
-  const pristine = getPristineRefs();
   const bytes = pristine.textEncode(json);
   if (bytes.length > MAX_PAYLOAD_BYTES) {
     throw new Error(

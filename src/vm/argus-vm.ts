@@ -21,6 +21,7 @@ import {
   extractEcdhPubkeyFromVersionHash,
   type SigintConfig,
 } from '../utils/sigint';
+import { getPristineRefs } from '../utils/pristine-iframe';
 import type { IntegrityResult } from '../integrity';
 
 let bytecodeCache: { bytecode: string } | null = null;
@@ -93,7 +94,10 @@ export function prefetchArgusVm(sigintConfig?: SigintConfig): PrefetchResult {
           modules,
           handshake: {
             serverPubKey: h2Data.serverPubKey,
-            sessionToken: crypto.randomUUID().replace(/-/g, ''),
+            // Pristine randomUUID so a page-realm hook on
+            // Crypto.prototype.randomUUID can't force token collisions
+            // (replay-marker) or pre-image the token.
+            sessionToken: getPristineRefs().randomUUID().replace(/-/g, ''),
           },
         };
       },

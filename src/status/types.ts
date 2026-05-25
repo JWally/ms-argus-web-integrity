@@ -191,4 +191,37 @@ export interface StatusFingerprint {
     loaderFilename: string | null;
     stackOrigin: string | null;
   };
+  /**
+   * Pristine-iframe lift state — observable on the wire so the server
+   * can score sessions that ran with the hardening collapsed to
+   * top-level globals (and therefore hookable).
+   *
+   *  - `lifted: false` — iframe construction failed at module init.
+   *    All SDK calls that "use pristine" (bytecode unpack SHA-256,
+   *    AES-GCM IVs, payload sessionToken, attestation envelope
+   *    stringify, SIGN_BYTES, incoming attest payload parse) silently
+   *    fell back to top-level globals. An attacker who hooked
+   *    `document.createElement('iframe')` or `HTMLIFrameElement.prototype
+   *    .contentWindow` to force this state can then freely hook the
+   *    top-level primitives the SDK now uses. Causes can also be benign
+   *    (sandboxed webview, CSP blocking iframes, very early lifecycle).
+   *    Treat as a soft signal; combine with other tells before scoring.
+   *
+   *  - `getRandomValuesNativeSource` / `randomUUIDNativeSource` —
+   *    `Function.prototype.toString.call(unboundFn)` snapshots captured
+   *    from the iframe realm. The server uses these to cross-validate
+   *    the `lifted` claim: a real successful lift always populates both
+   *    (unless `randomUUID` is unsupported in this browser). If the
+   *    client claims `lifted: true` but one of these is null without a
+   *    plausible cause, the lift state is being forged. Combined with
+   *    the existing `nativeIntegrity.rngCrossRealmMatch` /
+   *    `randomUuidCrossRealmMatch` booleans, the server has both the
+   *    raw source strings (for shape validation) and the boolean
+   *    comparison results (for hook detection).
+   */
+  pristine: {
+    lifted: boolean;
+    getRandomValuesNativeSource: string | null;
+    randomUUIDNativeSource: string | null;
+  };
 }
