@@ -119,7 +119,13 @@ interface PendingRun {
   resolve: (r: RunResult) => void;
   reject: (e: Error) => void;
   timeoutHandle: ReturnType<typeof setTimeout> | null;
-  messageHandler: (ev: MessageEvent) => void;
+  /**
+   * Private MessagePort the iframe replies on. The corresponding port2 is
+   * transferred to the iframe at load time. The reference here is held in
+   * a closure and never exposed to the DOM or to window, so a parent-realm
+   * forger cannot acquire a handle on it to spoof a reply.
+   */
+  port: MessagePort;
   startMs: number;
   sessionId: string | null;
 }
@@ -223,7 +229,11 @@ function innerScriptUrl(
 function clearPending(): PendingRun | null {
   if (!pending) return null;
   const p = pending;
-  window.removeEventListener('message', p.messageHandler);
+  try {
+    p.port.close();
+  } catch {
+    /* already closed */
+  }
   if (p.timeoutHandle) clearTimeout(p.timeoutHandle);
   try {
     p.iframe.remove();
@@ -256,29 +266,58 @@ function resolvePending(data: {
   });
 }
 
+// The srcdoc HTML pre-arms a message listener BEFORE any inner script
+// loads. The listener captures the MessagePort the loader transfers in
+// at iframe-load time and buffers any postBack calls the iframe makes
+// before the port arrives. The iframe-side bundle then uses
+// `window.__argusPostBack(msg)` instead of `window.parent.postMessage`,
+// which means replies travel through a private port the parent realm
+// has no handle on — forging a reply from the parent realm now requires
+// holding port1, which never leaves the loader's closure.
+const SRCDOC_HTML =
+  '<!doctype html><html><head><meta charset="utf-8"></head><body><script>' +
+  '(function(){var port=null;var buf=[];' +
+  'window.__argusPostBack=function(m){if(port){try{port.postMessage(m)}catch(e){}}else{buf.push(m)}};' +
+  'window.addEventListener("message",function on(e){' +
+  'if(e&&e.data&&e.data.argusInit===true&&e.ports&&e.ports[0]){' +
+  'window.removeEventListener("message",on);' +
+  'port=e.ports[0];' +
+  'while(buf.length){try{port.postMessage(buf.shift())}catch(_){}}' +
+  '}});' +
+  '})();</script></body></html>';
+
 function createIframe(
-  runId: string,
+  port2: MessagePort,
   innerUrl: string,
   onScriptError: () => void,
 ): HTMLIFrameElement {
   const iframe = document.createElement('iframe');
-  iframe.setAttribute(IFRAME_MARK, runId);
+  // Marker is presence-only so killExistingIframes can clean up strays.
+  // We deliberately do NOT serialize the runId here — putting it on a DOM
+  // attribute lets any same-page script read it and forge a reply.
+  iframe.setAttribute(IFRAME_MARK, '');
   iframe.setAttribute('style', HIDDEN_STYLE);
   iframe.setAttribute('title', 'Fraud prevention analytics');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.setAttribute('role', 'presentation');
   iframe.setAttribute('tabindex', '-1');
-  iframe.setAttribute(
-    'srcdoc',
-    '<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>',
-  );
+  iframe.setAttribute('srcdoc', SRCDOC_HTML);
 
   iframe.addEventListener(
     'load',
     () => {
       const doc = iframe.contentDocument;
-      if (!doc) {
+      const win = iframe.contentWindow;
+      if (!doc || !win) {
         rejectPending('iframe contentDocument unavailable');
+        return;
+      }
+      // Transfer port2 to the iframe. The srcdoc pre-armed listener
+      // captures it; the inner script then sends results through it.
+      try {
+        win.postMessage({ argusInit: true }, '*', [port2]);
+      } catch {
+        rejectPending('argusInit transfer failed');
         return;
       }
       const s = doc.createElement('script');
@@ -327,14 +366,16 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
   const cdnOrigin = loaderLocation.origin;
 
   return new Promise<RunResult>((resolve, reject) => {
-    const messageHandler = (ev: MessageEvent): void => {
-      // srcdoc iframe inherits parent's origin for postMessage purposes, so
-      // ev.origin will be the merchant page origin — NOT our CDN origin.
-      // Match on runId + shape instead, which is tamper-resistant enough for
-      // this purpose (runId is a UUID the merchant page can't guess).
+    // Private channel: port1 lives in this closure forever, port2 is
+    // transferred to the iframe on load. Replies arrive on port1.
+    // A forger in the parent realm cannot send messages here without
+    // holding port1, and port1 is never exposed.
+    const channel = new MessageChannel();
+    const { port1, port2 } = channel;
+
+    port1.onmessage = (ev: MessageEvent): void => {
       const data = ev.data as Record<string, unknown> | null | undefined;
       if (!data || typeof data !== 'object') return;
-      if (data.runId !== runId) return;
       if (data.argusDone === true) {
         const result = (data.result ?? {}) as {
           argusSessionId?: string;
@@ -348,6 +389,7 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
         rejectPending(`inner: ${errMsg}`);
       }
     };
+    port1.start();
 
     const timeoutHandle =
       timeoutMs > 0
@@ -357,15 +399,17 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
           )
         : null;
 
-    window.addEventListener('message', messageHandler);
-
     let iframe: HTMLIFrameElement;
     try {
-      iframe = createIframe(runId, innerUrl, () =>
+      iframe = createIframe(port2, innerUrl, () =>
         rejectPending('inner script load failed'),
       );
     } catch (err) {
-      window.removeEventListener('message', messageHandler);
+      try {
+        port1.close();
+      } catch {
+        /* noop */
+      }
       if (timeoutHandle) clearTimeout(timeoutHandle);
       reject(err as Error);
       return;
@@ -377,7 +421,7 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
       resolve,
       reject,
       timeoutHandle,
-      messageHandler,
+      port: port1,
       startMs: performance.now(),
       sessionId,
     };
