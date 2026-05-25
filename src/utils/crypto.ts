@@ -91,7 +91,10 @@ async function cipher(data: any): Promise<string[]> {
   }
 
   const subtleImpl = pristine.subtle ?? crypto.subtle;
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  // Use pristine.getRandomValues so a page-realm hook on
+  // Crypto.prototype.getRandomValues can't force IV reuse
+  // (catastrophic for AES-GCM confidentiality).
+  const iv = pristine.getRandomValues(new Uint8Array(12));
   const key = await subtleImpl.generateKey(
     { name: 'AES-GCM', length: 256 },
     true,

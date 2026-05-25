@@ -500,6 +500,20 @@ export async function getStatus(): Promise<StatusFingerprint> {
     randomUuidCrossRealmMatch,
   };
 
+  // Pristine-iframe lift state. `pristineRefsForCrossRealm` is the same
+  // singleton used above for the cross-realm match computation; reusing
+  // it here keeps the wire-side `lifted` flag consistent with what the
+  // cross-realm matches actually saw. Server uses this to detect the
+  // "iframe construction was sabotaged → SDK silently fell back to
+  // top-level globals → all the pristine-routed hardening is bypassed"
+  // failure mode that's otherwise indistinguishable from a clean session.
+  const pristine = {
+    lifted: pristineRefsForCrossRealm.lifted,
+    getRandomValuesNativeSource:
+      pristineRefsForCrossRealm.getRandomValuesNativeSource,
+    randomUUIDNativeSource: pristineRefsForCrossRealm.randomUUIDNativeSource,
+  };
+
   return {
     charging,
     chargingTime,
@@ -525,5 +539,6 @@ export async function getStatus(): Promise<StatusFingerprint> {
     nativeIntegrity,
     storageEstimate,
     bundleSelfHash,
+    pristine,
   };
 }
