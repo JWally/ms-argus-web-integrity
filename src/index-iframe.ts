@@ -99,8 +99,30 @@ async function buildAttestation(req: AttestationRequest): Promise<Attestation> {
 }
 
 function postBack(msg: Record<string, unknown>): void {
-  // srcdoc iframes share origin with parent. Loader validates replies by
-  // matching the runId UUID, not by origin.
+  // Replies travel over a MessagePort the loader pre-armed in the srcdoc
+  // HTML and transferred in at iframe-load time. Routing through the
+  // private port (instead of `window.parent.postMessage`) means a forger
+  // in the parent realm cannot inject a reply without holding port1,
+  // which lives only in the loader's closure.
+  //
+  // The srcdoc-installed `__argusPostBack` buffers calls until the port
+  // arrives, so it is safe to call from any point in main().
+  type ArgusWindow = Window & {
+    __argusPostBack?: (m: Record<string, unknown>) => void;
+  };
+  const send = (window as ArgusWindow).__argusPostBack;
+  if (typeof send === 'function') {
+    try {
+      send(msg);
+      return;
+    } catch {
+      /* fall through to legacy path */
+    }
+  }
+  // Legacy fallback: only reachable if running under an older loader
+  // that did not install __argusPostBack. Kept so a partial-rollout
+  // (new iframe bundle / old loader) still surfaces a result instead of
+  // hanging until timeout.
   try {
     window.parent.postMessage(msg, '*');
   } catch {
