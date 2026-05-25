@@ -148,9 +148,38 @@ function hasSoftwareRenderer(
 }
 
 function detectDevTools(): boolean {
+  // Primary: `debugger;` statement timing. Closed devtools → no-op
+  // (sub-microsecond). Open devtools with the debugger panel active →
+  // V8/SpiderMonkey interrupts execution for tens-to-hundreds of ms.
+  // Same primitive javascript-obfuscator's `debugProtection` rides on,
+  // minus the recursive freeze-the-tab wrapper.
+  //
+  // Anti-stripping: `new Function('debu' + 'gger;')` hides the
+  // literal from adblock rules and naive static scanners; the string
+  // split also dodges grep-the-bundle inspection.
+  //
+  // Browser caveats: Chromium triggers reliably on any panel.
+  // Firefox/Safari require "Pause on Debugger Statement" enabled
+  // (default on for both). False-negative rate is acceptable —
+  // analysts who explicitly disable that setting are themselves
+  // a small fraction of the surface we care about.
+  try {
+     
+    const probe = new Function('debu' + 'gger;');
+    const start = performance.now();
+    (probe as () => void)();
+    if (performance.now() - start > 100) return true;
+  } catch {
+    /* fall through to secondary */
+  }
+  // Secondary: outer/inner dimension delta. Was 160px and FP'd every
+  // Firefox-on-Linux session (browser chrome with menubar + bookmarks
+  // routinely exceeds that). 300px keeps the catch for docked-devtools
+  // configurations (devtools panels are typically 250–500px wide) while
+  // dodging real chrome.
   if (
-    topWin.outerWidth - topWin.innerWidth > 160 ||
-    topWin.outerHeight - topWin.innerHeight > 160
+    topWin.outerWidth - topWin.innerWidth > 300 ||
+    topWin.outerHeight - topWin.innerHeight > 300
   ) {
     return true;
   }
