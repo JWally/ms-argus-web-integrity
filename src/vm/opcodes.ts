@@ -12,6 +12,7 @@ export const Op = {
 
   // === Property access (0x10-0x1F) ===
   GET_PROP: 0x10,
+  SET_PROP: 0x11,
   SET_PROP_STR: 0x13,
   GET_PROP_STR: 0x12,
   TYPEOF: 0x15,
@@ -28,7 +29,13 @@ export const Op = {
   DIV: 0x33,
   MOD: 0x34,
   NEG: 0x35,
+  BIT_AND: 0x36,
+  BIT_OR: 0x37,
   BIT_XOR: 0x38,
+  BIT_NOT: 0x39,
+  SHL: 0x3a,
+  SHR: 0x3b,
+  USHR: 0x3c,
   INC: 0x3d,
   ABS: 0x3f,
 
@@ -86,6 +93,7 @@ export function hasOperand(opcode: number): boolean {
     case Op.LOAD_INT:
     case Op.GET_PROP_STR:
     case Op.SET_PROP_STR:
+    case Op.SET_PROP:
     case Op.API_GET:
     case Op.API_CALL:
     case Op.API_CALL_ASYNC:

@@ -206,6 +206,15 @@ function dispatch(
       (reg[dst] as R)[strings[operand]] = reg[src1];
       vm.pc += 2;
       break;
+    case Op.SET_PROP:
+      // arr[i] = value where i is computed.
+      // Compiler emits: SET_PROP, objReg=dst, propReg=src1, _, valReg=operand.
+      // Without this case the codegen falls back to opcode=undefined → encoded
+      // as 0 (MOV) which silently no-ops the assignment — exactly what made
+      // computeDeviceMac return "" before this fix.
+      (reg[dst] as R)[reg[src1] as keyof R] = reg[operand] as R[keyof R];
+      vm.pc += 2;
+      break;
     case Op.TYPEOF:
       reg[dst] = typeof reg[src1];
       vm.pc += 1;
@@ -261,6 +270,30 @@ function dispatch(
       break;
     case Op.BIT_XOR:
       reg[dst] = (reg[src1] as number) ^ (reg[src2] as number);
+      vm.pc += 1;
+      break;
+    case Op.BIT_AND:
+      reg[dst] = (reg[src1] as number) & (reg[src2] as number);
+      vm.pc += 1;
+      break;
+    case Op.BIT_OR:
+      reg[dst] = (reg[src1] as number) | (reg[src2] as number);
+      vm.pc += 1;
+      break;
+    case Op.BIT_NOT:
+      reg[dst] = ~(reg[src1] as number);
+      vm.pc += 1;
+      break;
+    case Op.SHL:
+      reg[dst] = (reg[src1] as number) << (reg[src2] as number);
+      vm.pc += 1;
+      break;
+    case Op.SHR:
+      reg[dst] = (reg[src1] as number) >> (reg[src2] as number);
+      vm.pc += 1;
+      break;
+    case Op.USHR:
+      reg[dst] = (reg[src1] as number) >>> (reg[src2] as number);
       vm.pc += 1;
       break;
     case Op.INC:
