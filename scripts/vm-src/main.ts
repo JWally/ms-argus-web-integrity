@@ -290,6 +290,18 @@ if (serverPubKey.length > 0) {
     }
   }
 
+  // Server-managed client-carried state. Read sync from localStorage via
+  // bridge 0x21 — '' on first visit or storage unavailable. Bridge
+  // POST_PAYLOAD writes the response's `cache` back to localStorage as
+  // a side effect on success, so the next submission picks up the
+  // updated value automatically. Field name on the wire is bland by
+  // design — see helpers/payload-schema in ms-argus-api.
+  let cacheValue = __api_get(0x21);
+  if (cacheValue.length > 0) {
+    payload.cache = cacheValue;
+  }
+  cacheValue = 0;
+
   let payloadJSON = stringify(payload);
 
   // Checkpoint: stringify block. A debugger stepping through the walker

@@ -67,6 +67,7 @@ function makeBridge(opts: {
   // Async device-identity APIs
   bridge.register(BridgeApi.GET_CRYPTO_PUBKEY, { call: async () => '' });
   bridge.register(BridgeApi.GET_CLIENT_UUID, { call: async () => null });
+  bridge.register(BridgeApi.GET_CACHE, { get: () => '' });
   bridge.register(BridgeApi.SIGN_BYTES, { call: async () => '' });
 
   // Sigint probes
