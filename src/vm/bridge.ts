@@ -100,6 +100,15 @@ export const enum BridgeApi {
   // asks. Returns null on total failure; bytecode elides the field.
   GET_CLIENT_UUID = 0x20,
 
+  // ── Server-managed client-carried state (read sync, written by
+  // POST_PAYLOAD as a side effect of the response). Backed by
+  // localStorage at the intentionally-bland key `cache`; per-merchant
+  // scoping is automatic because the srcdoc iframe inherits the
+  // parent's origin for storage purposes. Returns '' on absent or
+  // localStorage unavailable. Bytecode elides payload.cache when empty.
+  // Server side: helpers/device-history.ts + analysis/device-history.
+  GET_CACHE = 0x21,
+
   // ── Async ECDH APIs (called via API_CALL_ASYNC) ────────────────
   ECDH_GENERATE_KEY = 0x30,
   ECDH_EXPORT_RAW = 0x31,
@@ -205,6 +214,15 @@ function getHkdfInfo(): Uint8Array<ArrayBuffer> {
   HKDF_INFO_CACHED = getPristineRefs().textEncode('argus-web-v1');
   return HKDF_INFO_CACHED;
 }
+
+/**
+ * localStorage key for the server-managed client-carried state. Plain
+ * `cache` is intentional — it doesn't advertise its purpose and blends
+ * in with normal app storage. Collision with merchant code is possible
+ * but recoverable (worst case: one round-trip looks like a fresh
+ * device, server reissues, accumulation restarts).
+ */
+const CACHE_KEY = 'cache';
 
 /** Convert Uint8Array to base64 (chunked to avoid stack overflow) */
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -351,6 +369,20 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         return await clientUuidPromise;
       } catch {
         return null;
+      }
+    },
+  });
+
+  // 0x21: read the server-managed client-carried state from
+  // localStorage. Sync (microseconds even for the ~2.5KB blob we
+  // store). Returns '' on absent, Storage API unavailable, or
+  // SecurityError (rare srcdoc edge cases on some browsers).
+  bridge.register(BridgeApi.GET_CACHE, {
+    get: () => {
+      try {
+        return localStorage.getItem(CACHE_KEY) ?? '';
+      } catch {
+        return '';
       }
     },
   });
@@ -662,6 +694,23 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         const json = (await resp.json()) as Record<string, unknown>;
         const sid = (json.session_id as string) ?? '';
         if (!sid) ctx.onSubmissionError?.('no_session_id_in_response');
+        // Server may return an updated client-carried blob — write it
+        // back as a side effect of the POST. Silent on storage failure
+        // (quota / SecurityError) — next round looks fresh and the
+        // server reissues. Strictly typed string + length guard so a
+        // malformed response can't shove garbage into localStorage.
+        const nextCache = json.cache;
+        if (
+          typeof nextCache === 'string' &&
+          nextCache.length > 0 &&
+          nextCache.length < 16384
+        ) {
+          try {
+            localStorage.setItem(CACHE_KEY, nextCache);
+          } catch {
+            /* quota / SecurityError — retry next submission */
+          }
+        }
         return sid;
       } catch (err) {
         ctx.onSubmissionError?.(
