@@ -159,6 +159,15 @@ export const enum BridgeApi {
   SLICE_CANVAS = 0x63,
   SLICE_AUDIO = 0x64,
   SLICE_FONTS = 0x65,
+  // Worker self-attestation. Collected inside the dedicated VM worker
+  // (src/index-worker.ts) by reading self.navigator + self.performance
+  // directly. Anchors the iframe-supplied navigator slice against the
+  // worker's own observations: an attacker who substitutes
+  // device.navigator on the iframe → worker postMessage hop will
+  // produce a payload where device.navigator.userAgent !==
+  // device.worker_attest.ua. Server (helpers/device-mac.ts SLICE_ORDER)
+  // absorbs this into the MAC chain and an analyzer can cross-check.
+  SLICE_WORKER_ATTEST = 0x66,
 }
 
 export interface ArgusVmContext {
@@ -337,6 +346,14 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   bridge.register(BridgeApi.SLICE_CANVAS, { get: () => fp.canvas });
   bridge.register(BridgeApi.SLICE_AUDIO, { get: () => fp.audio });
   bridge.register(BridgeApi.SLICE_FONTS, { get: () => fp.fonts });
+  // Worker self-attestation. Populated by index-worker.ts before
+  // runArgusVm is invoked; undefined when this bridge runs in the
+  // legacy iframe fallback path (no worker realm to self-attest from).
+  // Bytecode reads via __api_get(0x66); macAbsorb tolerates missing
+  // slices via the canonical 'null' stringify.
+  bridge.register(BridgeApi.SLICE_WORKER_ATTEST, {
+    get: () => (fp as { worker_attest?: unknown }).worker_attest,
+  });
 
   // 0x14: get server public key
   bridge.register(BridgeApi.GET_SERVER_PUB_KEY, {

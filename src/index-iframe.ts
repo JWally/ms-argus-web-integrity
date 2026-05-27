@@ -21,7 +21,7 @@
  * opaque argusSessionId plus the merchant's own echoed-back session id.
  */
 
-import { collectIntegrity } from './integrity';
+import { collectIntegrity, type IntegrityResult } from './integrity';
 import { runArgusVm } from './vm/argus-vm';
 import type { SigintConfig } from './utils/sigint';
 import {
@@ -32,17 +32,126 @@ import {
 } from './utils/attestation';
 import { getCryptoId, signWithCryptoId } from './utils/get-crypto-id';
 import { getPristineRefs } from './utils/pristine-iframe';
+import type { RunRequest, WorkerOutbound } from './worker-runtime/protocol';
 
 // Baked in at build time via rollup replace. See rollup.config.mjs.
 declare const __ARGUS_API_BASE__: string;
 declare const __ARGUS_SIGINT_BASE_DOMAIN__: string;
 declare const __ARGUS_SIGINT_STAGE_PREFIX__: string;
+declare const __ARGUS_WORKER_URL__: string;
 
 const API_BASE = __ARGUS_API_BASE__;
+const WORKER_URL = __ARGUS_WORKER_URL__;
 const SIGINT_CONFIG: SigintConfig = {
   baseDomain: __ARGUS_SIGINT_BASE_DOMAIN__,
   stagePrefix: __ARGUS_SIGINT_STAGE_PREFIX__,
 };
+
+/** Phase-1 grace window: how long to wait for the worker to either
+ *  finish or return its phase-1 stub error before falling back to the
+ *  legacy in-iframe VM path. Real Phase-2 worker submissions take
+ *  ~2-5 seconds; the stub returns in <50 ms. 12 s tolerates a slow
+ *  worker bundle fetch on cold-cache mobile networks. */
+const WORKER_TIMEOUT_MS = 12_000;
+
+/**
+ * Spawn the dedicated VM worker and run the integrity flow inside it.
+ * Returns a result-shaped object on success, or a rejected promise on
+ * any failure (caller decides whether to fall back to the legacy path).
+ *
+ * The worker bundle is fetched from a same-origin URL and wrapped in a
+ * Blob so the spawned Worker shares the iframe's origin — keeps the
+ * `_fpid` cookie scope for POST_PAYLOAD's `credentials: 'include'` fetch.
+ */
+async function runViaWorker(
+  fingerprint: IntegrityResult,
+  cpi: string | null,
+  attestReq: AttestationRequest | null,
+): Promise<{
+  sessionId: string;
+  submissionError?: string;
+  attestation: Attestation | null;
+  attestError: string | null;
+}> {
+  // Fetch the worker source. Served by the same CDN as this bundle,
+  // so the same CORS allowlist that the SDK already relies on applies.
+  const src = await fetch(WORKER_URL, { credentials: 'omit' }).then((r) => {
+    if (!r.ok) throw new Error(`worker_fetch_${r.status}`);
+    return r.text();
+  });
+  const blob = new Blob([src], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  // Track the Worker handle so we can terminate on timeout/error and
+  // revoke the blob URL after the spawn (the worker has already loaded
+  // its source by the time the URL is revoked).
+  let worker: Worker | null = null;
+
+  try {
+    worker = new Worker(blobUrl);
+    URL.revokeObjectURL(blobUrl);
+
+    return await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('worker_timeout'));
+      }, WORKER_TIMEOUT_MS);
+
+      worker!.addEventListener('message', (ev: MessageEvent) => {
+        const msg = ev.data as WorkerOutbound;
+        if (!msg || typeof msg !== 'object') return;
+        if (msg.type === 'ready') {
+          // JSON-coerce before postMessage. The fingerprint embeds
+          // host objects (NavigatorUAData, Promise-wrapped slices,
+          // etc.) that aren't structured-clone-safe; the structured-
+          // clone algorithm throws DataCloneError on them. JSON.stringify
+          // → parse round-trip strips them to plain values, which is
+          // exactly what the bytecode walker (and the server's
+          // canonical stringify in helpers/device-mac.ts) already
+          // operates on — so this doesn't change what the MAC absorbs.
+          const sanitized = JSON.parse(JSON.stringify(fingerprint));
+          const run: RunRequest = {
+            type: 'run',
+            fingerprint: sanitized,
+            apiBase: API_BASE,
+            sigintConfig: SIGINT_CONFIG,
+            cpi,
+            attestReq,
+          };
+          worker!.postMessage(run);
+          return;
+        }
+        if (msg.type === 'result') {
+          clearTimeout(timeout);
+          resolve({
+            sessionId: msg.sessionId,
+            ...(msg.submissionError
+              ? { submissionError: msg.submissionError }
+              : {}),
+            attestation: msg.attestation,
+            attestError: msg.attestError,
+          });
+          return;
+        }
+        if (msg.type === 'error') {
+          clearTimeout(timeout);
+          reject(new Error(msg.detail));
+          return;
+        }
+      });
+
+      worker!.addEventListener('error', (ev: ErrorEvent) => {
+        clearTimeout(timeout);
+        reject(new Error(`worker_error: ${ev.message || 'unknown'}`));
+      });
+    });
+  } finally {
+    try {
+      worker?.terminate();
+    } catch {
+      /* terminate is best-effort */
+    }
+  }
+}
 
 // Captured synchronously at IIFE load — document.currentScript is only
 // valid during the script's parse/execute phase, not inside async callbacks.
@@ -160,41 +269,67 @@ async function main(): Promise<void> {
 
   try {
     const fingerprint = await collectIntegrity();
-    const vm = await runArgusVm(fingerprint, API_BASE, SIGINT_CONFIG, cpi);
 
-    // An empty vm.sessionId means submission failed somewhere in the VM
-    // path — ECDH POST returned non-2xx or threw, prefetch failed,
-    // handshake missing, etc. The bridge swallows these errors and
-    // returns '' for the session id; the VM passes that through. We
-    // surface it here as an explicit failure rather than posting back
-    // `argusDone: true` with an empty id (which would look like success
-    // to the loader and blow up downstream on DDB lookup).
-    if (!vm.sessionId) {
-      // vm.submissionError is set by the bridge when the POST failed
-      // (e.g. "http_402_Payment_Required" on KYC-gated proxies,
-      // "fetch_threw: ..." on CORS/network errors). Falls through to a
-      // generic string when the empty sessionId came from earlier in
-      // the VM (prefetch failure, handshake missing, etc.).
+    // Parse the optional attestation request once — both the worker and
+    // the legacy in-iframe fallback need it.
+    let attestReq: AttestationRequest | null = null;
+    let parseAttestError: string | null = null;
+    try {
+      attestReq = readAttestRequest();
+    } catch (e) {
+      parseAttestError = (e as Error).message;
+    }
+
+    let sessionIdResult = '';
+    let submissionError: string | null = null;
+    let attestation: Attestation | null = null;
+    let attestError: string | null = parseAttestError;
+
+    // PHASE 1: try the worker path first. The worker currently returns
+    // a `worker_phase1_stub` error (it's a stub until Phase 2 swaps in
+    // the real VM host). On ANY worker failure — stub error, fetch
+    // failure, timeout, error event — fall back to the legacy in-iframe
+    // runArgusVm so the SDK keeps working through the migration. Once
+    // Phase 2 lands and we've validated worker submissions, this
+    // fallback gets removed.
+    let useFallback = false;
+    try {
+      const w = await runViaWorker(fingerprint, cpi, attestReq);
+      sessionIdResult = w.sessionId;
+      submissionError = w.submissionError ?? null;
+      attestation = w.attestation;
+      // Worker's attestError takes precedence over our parse-time one
+      // (the worker actually attempted the build).
+      attestError = w.attestError;
+    } catch (e) {
+      useFallback = true;
+      // Log silently — drop-console terser strips these in prod. The
+      // metric for fallback frequency would have to come from server
+      // side (e.g., counting submissions with absent worker_attest).
+      console.warn('[iframe] worker path failed, falling back:', e);
+    }
+
+    if (useFallback) {
+      const vm = await runArgusVm(fingerprint, API_BASE, SIGINT_CONFIG, cpi);
+      sessionIdResult = vm.sessionId;
+      submissionError = vm.submissionError ?? null;
+      // Build attestation here — Phase 2 will move this into the worker.
+      if (attestReq && !parseAttestError) {
+        try {
+          attestation = await buildAttestation(attestReq);
+        } catch (e) {
+          attestError = (e as Error).message;
+        }
+      }
+    }
+
+    if (!sessionIdResult) {
       postBack({
         argusDone: false,
         runId,
-        error: vm.submissionError ?? 'submission_failed',
+        error: submissionError ?? 'submission_failed',
       });
       return;
-    }
-
-    // Build the optional attestation. If the caller didn't request one
-    // (attestPurpose absent), `attestation` stays null and the message
-    // shape matches the legacy result exactly.
-    let attestation: Attestation | null = null;
-    let attestError: string | null = null;
-    try {
-      const attestReq = readAttestRequest();
-      if (attestReq) {
-        attestation = await buildAttestation(attestReq);
-      }
-    } catch (e) {
-      attestError = (e as Error).message;
     }
 
     // Post ONLY the opaque argusSessionId + merchant's echoed session id,
@@ -204,7 +339,7 @@ async function main(): Promise<void> {
       argusDone: true,
       runId,
       result: {
-        argusSessionId: vm.sessionId,
+        argusSessionId: sessionIdResult,
         sessionId,
         attestation,
         attestError,

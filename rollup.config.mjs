@@ -184,6 +184,14 @@ const configs = {
         __ARGUS_API_BASE__: JSON.stringify(apiBase),
         __ARGUS_SIGINT_BASE_DOMAIN__: JSON.stringify(sigintBaseDomain),
         __ARGUS_SIGINT_STAGE_PREFIX__: JSON.stringify(sigintStagePrefix),
+        // URL of the worker bundle — fetched at runtime and wrapped in a
+        // blob: URL so the spawned Worker stays same-origin to the iframe
+        // (preserves cookie scope for POST_PAYLOAD).
+        __ARGUS_WORKER_URL__: JSON.stringify(
+          isProd
+            ? 'https://static-integrity.argus.pw/argus-integrity-worker.iife.js'
+            : `https://static-integrity-${stage}.argus.pw/argus-integrity-worker.iife.js`,
+        ),
       }),
       shared.plugins.typescript,
       obfuscator({
@@ -211,6 +219,103 @@ const configs = {
           // hit to flatten them. bytecode-modules.ts is excluded — it's just
           // a const-string export and obfuscating a giant base64 literal
           // wastes build time for zero gain.
+          'src/vm/bridge.ts',
+          'src/vm/interpreter.ts',
+          'src/vm/decoder.ts',
+          'src/vm/opcodes.ts',
+          'src/vm/format.ts',
+          'src/vm/vm.ts',
+          'src/vm/module.ts',
+          'src/vm/unpack.ts',
+        ],
+        compact: true,
+        controlFlowFlattening: true,
+        controlFlowFlatteningThreshold: 0.3,
+        deadCodeInjection: false,
+        identifierNamesGenerator: 'hexadecimal',
+        renameGlobals: false,
+        selfDefending: false,
+        stringArray: true,
+        stringArrayCallsTransform: false,
+        stringArrayEncoding: [],
+        stringArrayIndexShift: true,
+        stringArrayRotate: true,
+        stringArrayShuffle: true,
+        stringArrayWrappersCount: 1,
+        stringArrayWrappersChainedCalls: false,
+        stringArrayWrappersType: 'variable',
+        stringArrayThreshold: 0.5,
+        splitStrings: false,
+        transformObjectKeys: false,
+        unicodeEscapeSequence: false,
+      }),
+      terser({
+        compress: {
+          passes: 3,
+          drop_console: true,
+          drop_debugger: true,
+          side_effects: false,
+          reduce_funcs: false,
+        },
+        mangle: {
+          toplevel: true,
+          properties: { regex: /^_[a-z]/ },
+        },
+        format: { comments: false },
+      }),
+    ],
+  },
+
+  // Worker entry: hosts the bytecode VM + bridge + crypto + POST in a
+  // dedicated Web Worker realm. Page-realm prototype patches (Playwright
+  // addInitScript on SubtleCrypto, TextEncoder, etc.) cannot reach into a
+  // Worker; this is the structural defense the pristine-iframe pattern
+  // was approximating. Loaded by index-iframe.ts via `new Worker(blobUrl)`
+  // where blobUrl wraps the IIFE bytes inline — keeps the worker same-
+  // origin to the srcdoc iframe so the `_fpid` cookie scope is preserved
+  // on POST_PAYLOAD's fetch.
+  worker: {
+    input: 'src/index-worker.ts',
+    output: {
+      file: 'dist/argus-integrity-worker.iife.js',
+      format: 'iife',
+      name: 'ArgusIntegrityWorker',
+      sourcemap: false,
+      inlineDynamicImports: true,
+    },
+    plugins: [
+      shared.plugins.nodeResolve,
+      replace({
+        preventAssignment: true,
+        __BUILD_ID__: JSON.stringify(`worker-${Date.now()}`),
+        __ARGUS_API_BASE__: JSON.stringify(apiBase),
+        __ARGUS_SIGINT_BASE_DOMAIN__: JSON.stringify(sigintBaseDomain),
+        __ARGUS_SIGINT_STAGE_PREFIX__: JSON.stringify(sigintStagePrefix),
+      }),
+      shared.plugins.typescript,
+      obfuscator({
+        include: [
+          // Same surface as iframe — the bridge + VM are the obfuscation
+          // targets a reverser would chase. Collectors that move to worker
+          // realm get bundled here too.
+          'src/cssmedia/**',
+          'src/constants/**',
+          'src/engine/**',
+          'src/errors/**',
+          'src/headless/**',
+          'src/incognito/**',
+          'src/intl/**',
+          'src/lies/**',
+          'src/navigator/**',
+          'src/screen/**',
+          'src/shielding/**',
+          'src/status/**',
+          'src/timezone/**',
+          'src/timing/**',
+          'src/trash/**',
+          'src/webrtc/**',
+          'src/worker/**',
+          'src/integrity.ts',
           'src/vm/bridge.ts',
           'src/vm/interpreter.ts',
           'src/vm/decoder.ts',
