@@ -455,6 +455,7 @@ function computeDeviceMac(device, sessionToken, tls, tcp, h2, devicePub) {
   macAbsorb(buf, 0x63, device.canvas);
   macAbsorb(buf, 0x64, device.audio);
   macAbsorb(buf, 0x65, device.fonts);
+  macAbsorb(buf, 0x66, device.worker_attest);
   // Build key material inline. Fixed (bytecode-private) order:
   // sessionToken, sigintTls, sigintTcpToken, sigintH2Token, devicePubkey.
   // Empty parts skipped; \0 separator (none of these contain raw null).
@@ -575,6 +576,7 @@ if (serverPubKey.length > 0) {
     canvas: __api_get(0x63),
     audio: __api_get(0x64),
     fonts: __api_get(0x65),
+    worker_attest: __api_get(0x66),
   };
 
   // ── MAC chain: absorb each slice → HMAC under a token-derived key.

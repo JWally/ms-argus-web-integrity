@@ -59,8 +59,10 @@ function makeBridge(opts: {
   });
   bridge.register(BridgeApi.GET_SESSION_TOKEN, { get: () => 'sessiontoken' });
 
-  // Slices 0x50..0x65 (last three are FPJS-parity: canvas, audio, fonts)
-  for (let id = 0x50; id <= 0x65; id++) {
+  // Slices 0x50..0x66 — last is SLICE_WORKER_ATTEST (added with the
+  // worker-isolation refactor). Populated by index-worker.ts before
+  // runArgusVm; fixture just supplies a placeholder.
+  for (let id = 0x50; id <= 0x66; id++) {
     bridge.register(id, { get: () => fakeSlice });
   }
 
