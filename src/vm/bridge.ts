@@ -694,6 +694,14 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         // partitions on (cpi, session_id) regardless of the encrypted
         // fingerprint contents.
         if (ctx.cpi) headers['X-Argus-Cpi'] = ctx.cpi;
+        // NOTE: We can't manually inject `Sec-CH-UA` headers here even
+        // though Chrome doesn't default-send them on cross-origin Worker
+        // fetches — fetch spec forbids JS from setting any header whose
+        // name starts with `Sec-`. The server-side detector
+        // (merchant-projection.ts `detectUaFamilyHeaderMismatch`) carves
+        // out submissions whose body ships `device.navigator.userAgentData
+        // .brands`, which is enough to distinguish honest Chromium from
+        // stealth-strip Puppeteer.
         const resp = await fetch(ctx.apiEndpoint, {
           method: 'POST',
           // Send the `_fpid` third-party cookie (scoped to .argus.pw) so
