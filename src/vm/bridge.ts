@@ -212,6 +212,22 @@ export interface ArgusVmContext {
    * opaque 'submission_failed'. No-op if not provided.
    */
   onSubmissionError?: (detail: string) => void;
+  /**
+   * Server-managed client-carried state read from `localStorage('cache')`
+   * by the outer caller (iframe). The bridge GET_CACHE handler returns
+   * this verbatim. Empty string when absent / first visit. The worker
+   * can't read localStorage itself (WorkerGlobalScope doesn't expose
+   * it), so the iframe forwards it here.
+   */
+  cacheIn?: string;
+  /**
+   * Called by the bridge's POST_PAYLOAD handler when the server
+   * responds with an updated cache blob. The outer caller is
+   * responsible for persisting it (`localStorage.setItem('cache', v)`)
+   * — the bridge can't do that itself from worker scope. Silent no-op
+   * when not provided.
+   */
+  onCacheUpdate?: (newCache: string) => void;
 }
 
 // HKDF_INFO encoded via the pristine TextEncoder lifted from the nested
@@ -224,14 +240,10 @@ function getHkdfInfo(): Uint8Array<ArrayBuffer> {
   return HKDF_INFO_CACHED;
 }
 
-/**
- * localStorage key for the server-managed client-carried state. Plain
- * `cache` is intentional — it doesn't advertise its purpose and blends
- * in with normal app storage. Collision with merchant code is possible
- * but recoverable (worst case: one round-trip looks like a fresh
- * device, server reissues, accumulation restarts).
- */
-const CACHE_KEY = 'cache';
+// The localStorage key (intentionally bland: 'cache') is owned by
+// index-iframe.ts now — the bridge runs in a Worker that can't touch
+// localStorage. Iframe reads on the way in (sent via ctx.cacheIn),
+// writes on ctx.onCacheUpdate.
 
 /** Convert Uint8Array to base64 (chunked to avoid stack overflow) */
 function uint8ToBase64(bytes: Uint8Array): string {
@@ -390,18 +402,13 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
     },
   });
 
-  // 0x21: read the server-managed client-carried state from
-  // localStorage. Sync (microseconds even for the ~2.5KB blob we
-  // store). Returns '' on absent, Storage API unavailable, or
-  // SecurityError (rare srcdoc edge cases on some browsers).
+  // 0x21: return the server-managed client-carried state forwarded by
+  // the iframe via ctx.cacheIn. The bridge runs in a dedicated Worker
+  // (see index-worker.ts) and WorkerGlobalScope does NOT expose
+  // localStorage, so the read happens iframe-side and the value is
+  // shipped in the RunRequest. Empty string when absent / first visit.
   bridge.register(BridgeApi.GET_CACHE, {
-    get: () => {
-      try {
-        return localStorage.getItem(CACHE_KEY) ?? '';
-      } catch {
-        return '';
-      }
-    },
+    get: () => ctx.cacheIn ?? '',
   });
 
   // 0x33 signs arbitrary bytes with the cached non-extractable private key.
@@ -719,11 +726,11 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
         const json = (await resp.json()) as Record<string, unknown>;
         const sid = (json.session_id as string) ?? '';
         if (!sid) ctx.onSubmissionError?.('no_session_id_in_response');
-        // Server may return an updated client-carried blob — write it
-        // back as a side effect of the POST. Silent on storage failure
-        // (quota / SecurityError) — next round looks fresh and the
-        // server reissues. Strictly typed string + length guard so a
-        // malformed response can't shove garbage into localStorage.
+        // Server may return an updated client-carried blob. Forward to
+        // the outer caller (iframe via index-worker.ts onCacheUpdate)
+        // which writes it to localStorage('cache'). The bridge can't
+        // write storage from worker scope. Strictly typed string +
+        // length guard so a malformed response can't propagate garbage.
         const nextCache = json.cache;
         if (
           typeof nextCache === 'string' &&
@@ -731,9 +738,10 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
           nextCache.length < 16384
         ) {
           try {
-            localStorage.setItem(CACHE_KEY, nextCache);
+            ctx.onCacheUpdate?.(nextCache);
           } catch {
-            /* quota / SecurityError — retry next submission */
+            /* never-throw contract — iframe handler may throw if the
+               postMessage clone limit is hit; we just drop. */
           }
         }
         return sid;

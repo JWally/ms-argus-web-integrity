@@ -109,6 +109,15 @@ async function runViaWorker(
           // canonical stringify in helpers/device-mac.ts) already
           // operates on — so this doesn't change what the MAC absorbs.
           const sanitized = JSON.parse(JSON.stringify(fingerprint));
+          // Read the server-managed client-carried blob from localStorage
+          // here in the iframe — Worker scope can't (no localStorage).
+          // Empty string on absent / first visit / storage error.
+          let cacheIn = '';
+          try {
+            cacheIn = localStorage.getItem('cache') ?? '';
+          } catch {
+            /* private mode / quota / SecurityError — first-visit shape */
+          }
           const run: RunRequest = {
             type: 'run',
             fingerprint: sanitized,
@@ -116,8 +125,24 @@ async function runViaWorker(
             sigintConfig: SIGINT_CONFIG,
             cpi,
             attestReq,
+            cache: cacheIn,
           };
           worker!.postMessage(run);
+          return;
+        }
+        if (msg.type === 'set_cache') {
+          // Server returned an updated cache blob; persist it iframe-side
+          // so the next visit re-sends. Length is bounded server-side
+          // (helpers/device-history encryptDeviceHistory returns ~448
+          // chars for the common case); a malformed long string is
+          // guarded by the bridge's 16384 cap before this point.
+          if (typeof msg.value === 'string' && msg.value.length > 0) {
+            try {
+              localStorage.setItem('cache', msg.value);
+            } catch {
+              /* quota / SecurityError — server reissues on next visit */
+            }
+          }
           return;
         }
         if (msg.type === 'result') {

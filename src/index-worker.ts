@@ -108,6 +108,13 @@ async function handleRun(req: RunRequest): Promise<void> {
       req.apiBase,
       req.sigintConfig,
       req.cpi,
+      req.cache,
+      (newCache) => {
+        // Forward the server-issued cache blob to the iframe for
+        // persistence — WorkerGlobalScope can't access localStorage.
+        // Fire-and-forget; iframe writes synchronously on receipt.
+        post({ type: 'set_cache', value: newCache });
+      },
     );
 
     if (!vm.sessionId) {

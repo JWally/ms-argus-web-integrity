@@ -135,6 +135,8 @@ export async function runArgusVm(
   apiBase: string,
   sigintConfig?: SigintConfig,
   cpi?: string | null,
+  cacheIn?: string,
+  onCacheUpdate?: (newCache: string) => void,
 ): Promise<ArgusVmResult> {
   const fallback: ArgusVmResult = {
     sessionId: '',
@@ -206,6 +208,8 @@ export async function runArgusVm(
       onSubmissionError: (detail) => {
         submissionError = detail;
       },
+      cacheIn: cacheIn ?? '',
+      ...(onCacheUpdate ? { onCacheUpdate } : {}),
     };
     const bridge = createArgusVmBridge(ctx);
 

@@ -41,6 +41,13 @@ export interface RunRequest {
    *  with the persistent ECDSA device key (also held in IDB, which Worker
    *  scope has access to). */
   attestReq: AttestationRequest | null;
+  /** Server-managed client-carried state read from `localStorage('cache')`
+   *  by the iframe before kicking the run. The worker can't touch
+   *  `localStorage` itself (WorkerGlobalScope doesn't expose it), so the
+   *  iframe forwards the current value here. Empty string when absent /
+   *  first visit. The worker emits any updated value back via
+   *  `SetCacheMessage` for the iframe to persist. */
+  cache: string;
 }
 
 /** Worker → iframe, posted once at worker init complete. Lets the iframe
@@ -69,7 +76,23 @@ export interface ErrorMessage {
   detail: string;
 }
 
-export type WorkerOutbound = ReadyMessage | ResultMessage | ErrorMessage;
+/**
+ * Worker → iframe, non-terminal: server returned a new server-managed
+ * client-carried blob on the POST response. Iframe writes the value to
+ * `localStorage('cache')` so the next visit re-sends it. May fire before
+ * the terminal `result` since the bridge's POST_PAYLOAD handler emits
+ * this side-effect right after parsing the response.
+ */
+export interface SetCacheMessage {
+  type: 'set_cache';
+  value: string;
+}
+
+export type WorkerOutbound =
+  | ReadyMessage
+  | ResultMessage
+  | ErrorMessage
+  | SetCacheMessage;
 export type WorkerInbound = RunRequest;
 
 /** Magic-string discriminator the worker checks before treating an inbound
