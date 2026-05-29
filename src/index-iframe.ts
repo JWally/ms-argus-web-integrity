@@ -378,10 +378,14 @@ async function main(): Promise<void> {
 
     if (useFallback) {
       // Mirror the worker's pageContext injection for the legacy in-iframe
-      // path so device.page lands consistently regardless of which path
-      // produces the submission.
+      // path so meta.page lands consistently regardless of which path
+      // produces the submission. Bytecode reads meta as a whole via 0x11
+      // (no per-field slice handlers), so attaching here is sufficient.
       if (pageContext) {
-        (fingerprint as { page?: unknown }).page = pageContext;
+        const meta = (fingerprint as { meta?: Record<string, unknown> }).meta;
+        if (meta && typeof meta === 'object') {
+          (meta as Record<string, unknown>).page = pageContext;
+        }
       }
       const vm = await runArgusVm(fingerprint, API_BASE, SIGINT_CONFIG, cpi);
       sessionIdResult = vm.sessionId;
