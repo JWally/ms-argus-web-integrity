@@ -97,6 +97,15 @@ async function handleRun(req: RunRequest): Promise<void> {
     (req.fingerprint as { worker_attest?: unknown }).worker_attest =
       collectWorkerAttest();
 
+    // Inject the iframe-collected page context into the fingerprint so the
+    // bytecode walker absorbs it into device.page and it lands on the
+    // encrypted payload. Absent when no merchant supplied page and no
+    // auto-capture succeeded — analyzer falls back to HTTP Origin /
+    // Referer headers (already captured per row) in that case.
+    if (req.pageContext) {
+      (req.fingerprint as { page?: unknown }).page = req.pageContext;
+    }
+
     // Kick the h2-probe + bytecode prefetch as soon as we have the
     // sigintConfig. runArgusVm consumes the prefetched slot via the
     // module-level _prefetchSlot — same pattern the iframe-hosted

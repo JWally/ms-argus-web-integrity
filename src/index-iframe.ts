@@ -67,6 +67,7 @@ async function runViaWorker(
   fingerprint: IntegrityResult,
   cpi: string | null,
   attestReq: AttestationRequest | null,
+  page: import('./worker-runtime/protocol').PageContext | null,
 ): Promise<{
   sessionId: string;
   submissionError?: string;
@@ -126,6 +127,7 @@ async function runViaWorker(
             cpi,
             attestReq,
             cache: cacheIn,
+            ...(page ? { pageContext: page } : {}),
           };
           worker!.postMessage(run);
           return;
@@ -279,6 +281,46 @@ async function main(): Promise<void> {
   // ECDH POST so the server can partition the integrity record under
   // (cpi, session_id). Optional during the migration to dual-key auth.
   const cpi = SCRIPT_PARAMS.get('cpi');
+  // Page context forwarded by the loader (merchant-supplied + auto-captured
+  // frame state). All fields optional — old loaders without these params
+  // result in undefined values, the worker just lands device.page empty.
+  const pageContext: import('./worker-runtime/protocol').PageContext | null =
+    (() => {
+      const pageUrl = SCRIPT_PARAMS.get('pageUrl') ?? '';
+      const pageTitle = SCRIPT_PARAMS.get('pageTitle') ?? '';
+      const pageSourceRaw = SCRIPT_PARAMS.get('pageSource') ?? '';
+      const pageSource: 'merchant' | 'auto' | 'unknown' | undefined =
+        pageSourceRaw === 'merchant' ||
+        pageSourceRaw === 'auto' ||
+        pageSourceRaw === 'unknown'
+          ? pageSourceRaw
+          : undefined;
+      const referrer = SCRIPT_PARAMS.get('referrer') ?? '';
+      const isTopRaw = SCRIPT_PARAMS.get('isTop');
+      const isTop =
+        isTopRaw === '1' ? true : isTopRaw === '0' ? false : undefined;
+      const ancestorOriginsRaw = SCRIPT_PARAMS.get('ancestorOrigins') ?? '';
+      const ancestorOrigins = ancestorOriginsRaw
+        ? ancestorOriginsRaw.split('\n')
+        : [];
+      if (
+        !pageUrl &&
+        !pageTitle &&
+        !referrer &&
+        isTop === undefined &&
+        ancestorOrigins.length === 0
+      ) {
+        return null;
+      }
+      return {
+        ...(pageUrl ? { pageUrl } : {}),
+        ...(pageTitle ? { pageTitle } : {}),
+        ...(pageSource ? { pageSource } : {}),
+        ...(referrer ? { referrer } : {}),
+        ...(isTop !== undefined ? { isTop } : {}),
+        ...(ancestorOrigins.length > 0 ? { ancestorOrigins } : {}),
+      };
+    })();
   if (!runId) {
     throw new Error(
       'argus-iframe: missing runId (script src missing query params?)',
@@ -319,7 +361,7 @@ async function main(): Promise<void> {
     // fallback gets removed.
     let useFallback = false;
     try {
-      const w = await runViaWorker(fingerprint, cpi, attestReq);
+      const w = await runViaWorker(fingerprint, cpi, attestReq, pageContext);
       sessionIdResult = w.sessionId;
       submissionError = w.submissionError ?? null;
       attestation = w.attestation;
@@ -335,6 +377,12 @@ async function main(): Promise<void> {
     }
 
     if (useFallback) {
+      // Mirror the worker's pageContext injection for the legacy in-iframe
+      // path so device.page lands consistently regardless of which path
+      // produces the submission.
+      if (pageContext) {
+        (fingerprint as { page?: unknown }).page = pageContext;
+      }
       const vm = await runArgusVm(fingerprint, API_BASE, SIGINT_CONFIG, cpi);
       sessionIdResult = vm.sessionId;
       submissionError = vm.submissionError ?? null;
