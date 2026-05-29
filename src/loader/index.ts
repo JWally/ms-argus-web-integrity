@@ -89,6 +89,25 @@ interface RunOptions {
    * keypair the SDK already maintains for integrity-collect signing.
    */
   attest?: AttestRequest;
+  /**
+   * Merchant-supplied page URL — used when the SDK runs inside a
+   * cross-origin iframe (Shopify Checkout, embedded checkouts, etc.)
+   * where `window.top.location.href` is blocked by the browser. The
+   * merchant's loader call runs in *their* frame, so `window.location.href`
+   * there is the real page. Forward it explicitly:
+   *
+   *   argus.run({ cpi, page: window.location.href })
+   *
+   * The server also captures HTTP `Origin` + `Referer` headers and the
+   * iframe's own ancestorOrigins/referrer, so this is one input among
+   * several. Mismatches between merchant-supplied and browser-attested
+   * origin are surfaced as a sigint signal (catches SDK theft / unauthorised
+   * embedding). Optional — best-effort auto-capture falls back when absent.
+   */
+  page?: string;
+  /** Merchant-supplied page title (`document.title` in their frame).
+   *  Optional; useful for support tooling. Truncated to 256 chars. */
+  pageTitle?: string;
 }
 
 /** Resolved value from a successful run. */
@@ -172,13 +191,58 @@ function killExistingIframes(): void {
     .forEach((el) => el.remove());
 }
 
-function capturePageUrl(): string {
+/** Auto-capture page URL from `window.top.location.href` if same-origin.
+ *  Cross-origin parents throw SecurityError → caller falls back. */
+function captureTopUrlIfAccessible(): string {
   try {
     return window.top?.location?.href ?? '';
   } catch {
-    /* cross-origin parent */
+    /* cross-origin parent — caller falls back to merchant-supplied page */
   }
   return '';
+}
+
+/** Auto-capture additional frame context that's cross-origin-safe even
+ *  when the SDK is iframed by a different-origin embedder. */
+function captureFrameContext(): {
+  /** True if the SDK loader is running in the top frame (window.top === window). */
+  isTop: boolean;
+  /** Document.referrer — usually the embedder's URL (policy-dependent). */
+  referrer: string;
+  /** location.ancestorOrigins chain (Chrome / Safari). Empty in Firefox. */
+  ancestorOrigins: string[];
+} {
+  const isTop = window.top === window.self;
+  const referrer = (() => {
+    try {
+      return document.referrer ?? '';
+    } catch {
+      return '';
+    }
+  })();
+  const ancestorOrigins: string[] = [];
+  try {
+    const list = (
+      window.location as Location & { ancestorOrigins?: DOMStringList }
+    ).ancestorOrigins;
+    if (list && typeof list.length === 'number') {
+      for (let i = 0; i < list.length && i < 8; i++) {
+        const o = list.item(i);
+        if (typeof o === 'string') ancestorOrigins.push(o);
+      }
+    }
+  } catch {
+    /* Firefox lacks ancestorOrigins → list stays empty */
+  }
+  return { isTop, referrer, ancestorOrigins };
+}
+
+const MAX_PAGE_URL_LEN = 2048;
+const MAX_PAGE_TITLE_LEN = 256;
+
+function clamp(s: string | undefined, max: number): string {
+  if (typeof s !== 'string' || s.length === 0) return '';
+  return s.length > max ? s.slice(0, max) : s;
 }
 
 function generateRunId(): string {
@@ -199,7 +263,14 @@ function innerScriptUrl(
   sessionId: string | null,
   cpi: string | null,
   attest: AttestRequest | null,
-  opts: { pageUrl: string; referrer: string },
+  page: {
+    pageUrl: string;
+    pageTitle: string;
+    pageSource: 'merchant' | 'auto' | 'unknown';
+    referrer: string;
+    isTop: boolean;
+    ancestorOrigins: string[];
+  },
 ): string {
   if (!loaderLocation) {
     throw new Error('argus: unable to resolve loader script origin');
@@ -221,8 +292,19 @@ function innerScriptUrl(
       q.set('attestTtl', String(attest.ttlSeconds));
     }
   }
-  if (opts.pageUrl) q.set('pageUrl', opts.pageUrl);
-  if (opts.referrer) q.set('referrer', opts.referrer);
+  if (page.pageUrl) q.set('pageUrl', page.pageUrl);
+  if (page.pageTitle) q.set('pageTitle', page.pageTitle);
+  if (page.pageSource && page.pageSource !== 'unknown') {
+    q.set('pageSource', page.pageSource);
+  }
+  if (page.referrer) q.set('referrer', page.referrer);
+  q.set('isTop', page.isTop ? '1' : '0');
+  if (page.ancestorOrigins.length > 0) {
+    // newline-joined keeps it URL-safe after encodeURIComponent and
+    // avoids comma collision if any origin ever embeds a comma (it can't
+    // per RFC, but defensive).
+    q.set('ancestorOrigins', page.ancestorOrigins.join('\n'));
+  }
   return url.toString();
 }
 
@@ -350,14 +432,35 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
   const attest =
     opts.attest && typeof opts.attest.purpose === 'string' ? opts.attest : null;
 
-  const pageUrl = capturePageUrl();
-  const referrer = document.referrer ?? '';
+  // Page URL resolution. Prefer the merchant-supplied value — it works
+  // even when the SDK is iframed by a cross-origin embedder (Shopify
+  // Checkout Extensibility etc.) where window.top.location.href throws.
+  // Auto-capture is the fallback for top-frame deployments.
+  const merchantPage = clamp(opts.page, MAX_PAGE_URL_LEN);
+  const autoPage = captureTopUrlIfAccessible();
+  let pageUrl: string;
+  let pageSource: 'merchant' | 'auto' | 'unknown';
+  if (merchantPage) {
+    pageUrl = merchantPage;
+    pageSource = 'merchant';
+  } else if (autoPage) {
+    pageUrl = clamp(autoPage, MAX_PAGE_URL_LEN);
+    pageSource = 'auto';
+  } else {
+    pageUrl = '';
+    pageSource = 'unknown';
+  }
+  const frame = captureFrameContext();
 
   let innerUrl: string;
   try {
     innerUrl = innerScriptUrl(runId, sessionId, cpi, attest, {
       pageUrl,
-      referrer,
+      pageTitle: clamp(opts.pageTitle, MAX_PAGE_TITLE_LEN),
+      pageSource,
+      referrer: clamp(frame.referrer, MAX_PAGE_URL_LEN),
+      isTop: frame.isTop,
+      ancestorOrigins: frame.ancestorOrigins,
     });
   } catch (err) {
     return Promise.reject(err as Error);

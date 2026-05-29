@@ -23,6 +23,33 @@ import type { IntegrityResult } from '../integrity';
 import type { SigintConfig } from '../utils/sigint';
 import type { Attestation, AttestationRequest } from './../utils/attestation';
 
+/**
+ * Optional page-context bundle. Captured iframe-side (browser-bounded
+ * fields the worker can't see) and forwarded to the worker so it lands
+ * on `device.page` inside the encrypted fingerprint payload.
+ *
+ * Field sources:
+ *   - `pageUrl` / `pageTitle`: merchant-supplied via window.argus.run()
+ *     OR auto-captured from `window.top.location.href` when same-origin.
+ *     The `pageSource` discriminator lets the server know which.
+ *   - `referrer`: iframe-scope `document.referrer` — usually reveals the
+ *     embedder when Referrer-Policy allows.
+ *   - `isTop`: whether the SDK loader's frame is the top frame.
+ *   - `ancestorOrigins`: cross-origin-safe ancestor chain. Chrome/Safari
+ *     only (Firefox returns empty).
+ *
+ * All fields optional individually — the type itself is optional on
+ * RunRequest. Old SDK bundles without page collection still pass.
+ */
+export interface PageContext {
+  pageUrl?: string;
+  pageTitle?: string;
+  pageSource?: 'merchant' | 'auto' | 'unknown';
+  referrer?: string;
+  isTop?: boolean;
+  ancestorOrigins?: string[];
+}
+
 /** Iframe → worker, sent exactly once after the worker posts 'ready'. */
 export interface RunRequest {
   type: 'run';
@@ -48,6 +75,11 @@ export interface RunRequest {
    *  first visit. The worker emits any updated value back via
    *  `SetCacheMessage` for the iframe to persist. */
   cache: string;
+  /** Optional page-context bundle (merchant-supplied + auto-captured
+   *  frame state). When absent, the worker lands `device.page` as
+   *  missing — server-side analysis falls back to HTTP Origin + Referer
+   *  headers (already captured per row). */
+  pageContext?: PageContext;
 }
 
 /** Worker → iframe, posted once at worker init complete. Lets the iframe

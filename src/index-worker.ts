@@ -97,6 +97,21 @@ async function handleRun(req: RunRequest): Promise<void> {
     (req.fingerprint as { worker_attest?: unknown }).worker_attest =
       collectWorkerAttest();
 
+    // Inject the iframe-collected page context onto `fingerprint.meta.page`
+    // so it rides through the bytecode's GET_META (0x11) read into the
+    // encrypted payload's `meta.page`. The bytecode walks `device.*` via
+    // fixed slice handlers — adding a brand-new device sub-object would
+    // require a new SLICE_ id + bytecode recompile + macAbsorb update on
+    // both client and server. Riding on meta is the lower-risk route and
+    // lands at row.meta.page on the server with no schema changes.
+    // Absent when no merchant supplied page and no auto-capture succeeded.
+    if (req.pageContext) {
+      const meta = (req.fingerprint as { meta?: Record<string, unknown> }).meta;
+      if (meta && typeof meta === 'object') {
+        (meta as Record<string, unknown>).page = req.pageContext;
+      }
+    }
+
     // Kick the h2-probe + bytecode prefetch as soon as we have the
     // sigintConfig. runArgusVm consumes the prefetched slot via the
     // module-level _prefetchSlot — same pattern the iframe-hosted
