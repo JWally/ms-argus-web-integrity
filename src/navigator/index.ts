@@ -121,11 +121,24 @@ function getPlatform(
 /**
  * Validates and returns the user agent string.
  *
+ * Source priority (consumer-side): worker scope → main navigator.
+ * The caller hands us the SDK's best-available worker scope, which
+ * `getBestWorkerScope` has already resolved as SharedWorker preferred
+ * over DedicatedWorker. Using that value (when present) puts the
+ * shipped `device.navigator.userAgent` outside the reach of
+ * page-realm hooks that can patch `navigator.userAgent` on the main
+ * thread but not inside a worker realm.
+ *
+ * The main-thread value is still computed for the integrity checks
+ * (appVersion / gibberish / whitespace / cross-scope divergence) —
+ * we just don't return it when a worker value is available.
+ *
  * Checks for:
  * - Mismatch with appVersion
  * - Extra whitespace
  * - Gibberish content
- * - Worker scope mismatch
+ * - Worker scope mismatch (sets the lie flag, doesn't change the
+ *   value we return)
  */
 function getUserAgent(
   workerScope: { userAgent?: string },
@@ -152,7 +165,14 @@ function getUserAgent(
       setLied(); // documented in the worker source
     }
 
-    return userAgent.trim().replace(/\s{2,}/, ' ');
+    // Prefer worker-scope (Shared > Web, already resolved upstream)
+    // when it's actually a string. Fall back to main thread otherwise.
+    const preferred =
+      typeof workerScope.userAgent === 'string' &&
+      workerScope.userAgent.length > 0
+        ? workerScope.userAgent
+        : userAgent;
+    return preferred.trim().replace(/\s{2,}/, ' ');
   }, 'userAgent failed');
 }
 
