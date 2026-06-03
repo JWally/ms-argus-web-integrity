@@ -64,6 +64,12 @@ export interface RunRequest {
   sigintConfig: SigintConfig;
   /** Merchant CPI from script URL query params (loader → iframe → worker). */
   cpi: string | null;
+  /** Argus `session_id` minted ONCE per scan by the iframe and shared
+   *  across the worker submission and the in-iframe fallback submission,
+   *  so a worker→fallback double-submit carries the same session_id (the
+   *  `(cpi, session_id)` partition key). Keeps the server's single-use
+   *  STUN claim idempotent instead of 409ing the fallback as a replay. */
+  sessionId: string;
   /** Caller-supplied attestation request, if any. Signed in the worker
    *  with the persistent ECDSA device key (also held in IDB, which Worker
    *  scope has access to). */

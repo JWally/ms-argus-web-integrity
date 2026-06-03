@@ -68,6 +68,7 @@ async function runViaWorker(
   cpi: string | null,
   attestReq: AttestationRequest | null,
   page: import('./worker-runtime/protocol').PageContext | null,
+  sessionId: string,
 ): Promise<{
   sessionId: string;
   submissionError?: string;
@@ -127,6 +128,7 @@ async function runViaWorker(
             cpi,
             attestReq,
             cache: cacheIn,
+            sessionId,
             ...(page ? { pageContext: page } : {}),
           };
           worker!.postMessage(run);
@@ -337,6 +339,18 @@ async function main(): Promise<void> {
   try {
     const fingerprint = await collectIntegrity();
 
+    // Mint the argus session_id ONCE per scan, here in the iframe, and use
+    // it for BOTH the worker submission and the in-iframe fallback below.
+    // Each VM run previously minted its own fresh UUID (bridge 0x10), so a
+    // worker→fallback double-submit of the same single-use STUN cipher
+    // arrived under two different session_ids and the fallback was rejected
+    // as a cross-session replay (409). Sharing one id makes that re-submit
+    // an idempotent same-session retry server-side. Generated via the
+    // iframe-pristine randomUUID so a page-realm hook can't force
+    // collisions or covertly mark sessions (same property bridge 0x10
+    // relied on). Must be per-scan, not a stable per-device id.
+    const runSessionId = getPristineRefs().randomUUID();
+
     // Parse the optional attestation request once — both the worker and
     // the legacy in-iframe fallback need it.
     let attestReq: AttestationRequest | null = null;
@@ -361,7 +375,13 @@ async function main(): Promise<void> {
     // fallback gets removed.
     let useFallback = false;
     try {
-      const w = await runViaWorker(fingerprint, cpi, attestReq, pageContext);
+      const w = await runViaWorker(
+        fingerprint,
+        cpi,
+        attestReq,
+        pageContext,
+        runSessionId,
+      );
       sessionIdResult = w.sessionId;
       submissionError = w.submissionError ?? null;
       attestation = w.attestation;
@@ -387,7 +407,15 @@ async function main(): Promise<void> {
           (meta as Record<string, unknown>).page = pageContext;
         }
       }
-      const vm = await runArgusVm(fingerprint, API_BASE, SIGINT_CONFIG, cpi);
+      const vm = await runArgusVm(
+        fingerprint,
+        API_BASE,
+        SIGINT_CONFIG,
+        cpi,
+        undefined,
+        undefined,
+        runSessionId,
+      );
       sessionIdResult = vm.sessionId;
       submissionError = vm.submissionError ?? null;
       // Build attestation here — Phase 2 will move this into the worker.
