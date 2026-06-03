@@ -137,6 +137,7 @@ export async function runArgusVm(
   cpi?: string | null,
   cacheIn?: string,
   onCacheUpdate?: (newCache: string) => void,
+  sessionId?: string,
 ): Promise<ArgusVmResult> {
   const fallback: ArgusVmResult = {
     sessionId: '',
@@ -204,6 +205,7 @@ export async function runArgusVm(
       apiEndpoint: `${apiBase}/v1/integrity-collect`,
       patEndpoint: `${apiBase}/v1/pat-attestation`,
       sessionToken: handshake.sessionToken,
+      ...(sessionId ? { sessionId } : {}),
       h2Promise: _prefetchH2Slot ?? undefined,
       onSubmissionError: (detail) => {
         submissionError = detail;

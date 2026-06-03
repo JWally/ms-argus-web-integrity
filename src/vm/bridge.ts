@@ -201,6 +201,17 @@ export interface ArgusVmContext {
   patEndpoint?: string;
   /** Opaque session correlation token — forwarded as X-Argus-Session */
   sessionToken: string;
+  /**
+   * The argus `session_id` written into the payload's `identifiers` and
+   * used as the `(cpi, session_id)` partition key server-side. Minted
+   * ONCE per scan by the iframe and threaded into BOTH the worker VM and
+   * the in-iframe fallback VM, so a worker→fallback double-submit carries
+   * the SAME session_id. That makes the server's single-use STUN claim
+   * idempotent (`existing.sessionId === sessionId`) and the DDB write a
+   * same-key retry instead of a cross-session replay (409). When absent
+   * (legacy callers), the 0x10 handler falls back to a fresh per-run UUID.
+   */
+  sessionId?: string;
   /** Pre-started h2-probe token promise — reused to avoid a duplicate fetch */
   h2Promise?: Promise<string>;
   /**
@@ -305,14 +316,20 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
 
   // ── Payload composition helpers ───────────────────────────────────
 
-  // 0x10: fresh session UUID. Sourced from the iframe-pristine
-  // `randomUUID` so a page-realm hook on `Crypto.prototype.randomUUID`
-  // can't force collisions or mark sessions covertly. The fallback
-  // chain inside `pristine.randomUUID` (iframe → iframe-rng + manual
-  // v4 → top-level) keeps it honest even if the iframe path is
-  // partially available. See CASTLE-TO-ARGUS §3.3.
+  // 0x10: session UUID written into identifiers.session_id. Prefer the
+  // scan-scoped id minted once by the iframe (ctx.sessionId) so the worker
+  // and the in-iframe fallback submit under the SAME session_id — without
+  // this, each VM run minted its own fresh UUID and a fallback re-submit of
+  // the same (single-use) STUN cipher under a different session_id was
+  // rejected as a cross-session replay (409). When ctx.sessionId is absent
+  // (legacy callers), fall back to the iframe-pristine `randomUUID` so a
+  // page-realm hook on `Crypto.prototype.randomUUID` still can't force
+  // collisions or mark sessions covertly. The fallback chain inside
+  // `pristine.randomUUID` (iframe → iframe-rng + manual v4 → top-level)
+  // keeps it honest even if the iframe path is partially available.
+  // See CASTLE-TO-ARGUS §3.3.
   bridge.register(BridgeApi.GET_PAYLOAD_UUID, {
-    get: () => pristine.randomUUID(),
+    get: () => ctx.sessionId ?? pristine.randomUUID(),
   });
 
   // 0x11: meta sub-object (version + timing). Raw object, read-only from the

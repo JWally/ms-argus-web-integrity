@@ -130,6 +130,7 @@ async function handleRun(req: RunRequest): Promise<void> {
         // Fire-and-forget; iframe writes synchronously on receipt.
         post({ type: 'set_cache', value: newCache });
       },
+      req.sessionId,
     );
 
     if (!vm.sessionId) {
