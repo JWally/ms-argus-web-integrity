@@ -1,3 +1,6 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+
 import { expect } from '@playwright/test';
 import type {
   Browser as PlaywrightBrowser,
@@ -7,6 +10,47 @@ import type { Page as PuppeteerPage } from 'puppeteer';
 import { fetchIntegrityRecord } from '../utils/integrity-store';
 
 export const BASE_URL = 'http://localhost:9100';
+
+/**
+ * Some stealth engines (Camoufox, nodriver, CloakBrowser) ship only as
+ * Python packages and live in sibling repos' virtualenvs, so we can't
+ * import them into this TS/Playwright suite. Instead a tiny per-tool
+ * Python runner drives the loader page and prints the argus session id;
+ * these helpers locate the interpreter and shell out to the runner.
+ */
+export function findVenvPython(candidates: string[]): string | null {
+  for (const c of candidates) if (existsSync(c)) return c;
+  return null;
+}
+
+/**
+ * Run a Python browser-runner script and return the argus session id it
+ * printed. The runner MUST emit a single line `ARGUS_SESSION_ID=<uuid>`.
+ * LOADER_URL + ARGUS_TEST_CPI are passed through the environment.
+ */
+export function runPythonBrowserRunner(
+  pythonBin: string,
+  scriptPath: string,
+  extraEnv: Record<string, string> = {},
+): string {
+  const out = execFileSync(pythonBin, [scriptPath], {
+    env: {
+      ...process.env,
+      // Autorun page bakes cpi/sid into the URL and exposes the result via
+      // the DOM, so Python drivers only need DOM reads — no main-world eval.
+      LOADER_URL: autorunUrl(),
+      ...extraEnv,
+    },
+    encoding: 'utf8',
+    timeout: 120_000,
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  const m = out.match(/ARGUS_SESSION_ID=([0-9a-f-]{36})/i);
+  if (!m) {
+    throw new Error(`python runner emitted no session id. stdout:\n${out}`);
+  }
+  return m[1];
+}
 
 /**
  * Result returned by runIntegrityPuppeteer — mirrors what
@@ -68,6 +112,49 @@ export async function runIntegrityPuppeteer(
   );
 
   return result;
+}
+
+/** Build the DOM-mediated autorun URL (see test-loader-autorun.html). */
+export function autorunUrl(opts: { sessionId?: string; timeoutMs?: number } = {}): string {
+  const sid = opts.sessionId ?? `bot-${Date.now()}`;
+  const cpi = process.env.ARGUS_TEST_CPI ?? '';
+  const timeoutMs = opts.timeoutMs ?? 30_000;
+  return (
+    `${BASE_URL}/test-loader-autorun.html` +
+    `?cpi=${encodeURIComponent(cpi)}&sid=${encodeURIComponent(sid)}&timeoutMs=${timeoutMs}`
+  );
+}
+
+/**
+ * Drive a Playwright (or Patchright — same API) page through the loader
+ * via the DOM-mediated autorun page. We deliberately do NOT call
+ * window.argus from page.evaluate: Patchright runs evaluate in an
+ * ISOLATED world (its anti-Runtime.enable stealth), where the main-world
+ * `window.argus` global is invisible. The autorun page runs argus in the
+ * main world itself and writes the result into #argus-out; we read it via
+ * the DOM, which is shared across JS worlds.
+ */
+export async function runIntegrityPlaywright(
+  page: PlaywrightPage,
+  opts: { sessionId?: string; timeoutMs?: number } = {},
+): Promise<LoaderRunResult> {
+  await page.goto(autorunUrl(opts), { waitUntil: 'load' });
+  await page.waitForSelector('#argus-out[data-done="1"]', { timeout: 45_000 });
+  const text = (await page.textContent('#argus-out')) ?? '{}';
+  const r = JSON.parse(text) as {
+    ok?: boolean;
+    argusSessionId?: string;
+    sessionId?: string;
+    error?: string;
+  };
+  if (!r.ok || !r.argusSessionId) {
+    throw new Error(`autorun failed: ${r.error ?? 'no session id'}`);
+  }
+  return {
+    sessionId: r.sessionId ?? opts.sessionId ?? '',
+    argusSessionId: r.argusSessionId,
+    durationMs: 0,
+  };
 }
 
 /**

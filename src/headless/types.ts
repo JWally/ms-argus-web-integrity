@@ -231,6 +231,61 @@ export interface ConsoleTiming {
    * Optional: older SDK builds don't emit it.
    */
   measure_heavy_us?: number;
+  /**
+   * Dedicated-worker nested-object console serialization trap. This is
+   * the lab-validated `worker-console-serialization` variant: a deeper
+   * object logged fewer times and measured with worker-wall clocks. It is
+   * intentionally positive-only; high values are strong CDP residue, low
+   * values do not prove the browser is clean.
+   *
+   * Optional: older SDK builds and failed worker benches don't emit it.
+   */
+  nested_worker_heavy_us?: number;
+  /** Empty `console.log()` loop for the nested worker trap. */
+  nested_worker_empty_us?: number;
+  /** Per-call wall-clock delta: nested heavy minus empty console loop. */
+  nested_worker_delta_us?: number;
+  /** Same nested heavy loop measured with `performance.now()`. */
+  nested_worker_heavy_perf_us?: number;
+  /** Same nested empty loop measured with `performance.now()`. */
+  nested_worker_empty_perf_us?: number;
+  /** Same nested heavy loop measured with `performance.measure()`. */
+  nested_worker_heavy_measure_us?: number;
+  /** Same nested empty loop measured with `performance.measure()`. */
+  nested_worker_empty_measure_us?: number;
+  /** Wall-clock minus perf-clock gap for the nested heavy loop, in ms. */
+  nested_worker_heavy_lie_ms?: number;
+  /** Wall-clock minus perf-clock gap for the nested empty loop, in ms. */
+  nested_worker_empty_lie_ms?: number;
+  /** Iteration count used by the nested worker trap. */
+  nested_worker_iters?: number;
+}
+
+/**
+ * Module-worker import-chain timing — CDP attach detector.
+ *
+ * A module-type dedicated worker that imports many blob modules emits
+ * inspector Network/Debugger work per import when a CDP session is
+ * attached. The classic-worker baseline absorbs worker startup and CPU
+ * variance; the module-classic gap is the signal. Positive-only.
+ */
+export interface WorkerModuleImportChainTiming {
+  /** Number of leaf modules imported by the module worker. */
+  leaves: number;
+  /** Number of timed repetitions per worker kind. */
+  reps: number;
+  /** Classic worker median time from construction to first message. */
+  classic_p50_ms: number;
+  /** Module worker median time from construction to first message. */
+  module_p50_ms: number;
+  /** module_p50_ms - classic_p50_ms. */
+  delta_ms: number;
+  /** Delta normalized per module import. */
+  per_import_us: number;
+  /** module_p50_ms / classic_p50_ms. */
+  ratio: number | null;
+  /** True if either calibrated positive-only threshold fired. */
+  cdp_shaped: boolean;
 }
 
 /**
@@ -267,6 +322,12 @@ export interface CdpSignals {
    *     ~60ms but worker spawn + bench should finish well inside this
    */
   consoleTimingWorker?: ConsoleTiming;
+  /**
+   * Module-worker import-chain timing bench. Absent on non-Blink or when
+   * CSP blocks blob/module workers. Positive-only: a high value is useful
+   * CDP evidence; a normal value is not a clean-browser guarantee.
+   */
+  workerModuleImportChain?: WorkerModuleImportChainTiming;
   /**
    * `Object.getOwnPropertyNames` toStrings as `[native code]`. False
    * means the enumeration primitive that `cdcGlobals` / `pwBindings`

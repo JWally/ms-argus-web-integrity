@@ -89,6 +89,7 @@ const HEAVY = {
   l1: { l2: { l3: { l4: [1, 2, 3, 4, 5, 'abc', true, null] } } },
   other: { a: 1, b: 2, c: 3, d: 'hello', arr: [10, 20, 30] },
 };
+const NESTED_ITERS = 180;
 const NATIVE_RE = /\\{\\s*\\[native code\\]\\s*\\}/;
 
 function isNativeFn(fn) {
@@ -153,6 +154,14 @@ function countConsoleLies(con) {
 
 function round2(n) { return Math.round(n * 100) / 100; }
 
+function buildNested() {
+  let nested = { v: 1 };
+  for (let i = 0; i < 20; i++) {
+    nested = { c: nested, i, s: 'x'.repeat(32) };
+  }
+  return nested;
+}
+
 try {
   const con = self.console;
   const perf = self.performance;
@@ -208,6 +217,67 @@ try {
   const wallHeavyUs = ((w3 - w2) * 1000) / N;
   const mathLoopUs = ((t7 - t6) * 1000) / M;
 
+  const nested = buildNested();
+  for (let i = 0; i < 30; i++) {
+    con.log();
+    con.log(nested);
+  }
+
+  if (perfMark) perfMark('arg-n-empty-s');
+  const neWallStart = +new self.Date();
+  const nePerfStart = perf.now();
+  for (let i = 0; i < NESTED_ITERS; i++) con.log();
+  const nePerfEnd = perf.now();
+  const neWallEnd = +new self.Date();
+  if (perfMark) perfMark('arg-n-empty-e');
+
+  if (perfMark) perfMark('arg-n-heavy-s');
+  const nhWallStart = +new self.Date();
+  const nhPerfStart = perf.now();
+  for (let i = 0; i < NESTED_ITERS; i++) con.log(nested);
+  const nhPerfEnd = perf.now();
+  const nhWallEnd = +new self.Date();
+  if (perfMark) perfMark('arg-n-heavy-e');
+
+  const nestedEmptyWall = neWallEnd - neWallStart;
+  const nestedHeavyWall = nhWallEnd - nhWallStart;
+  const nestedEmptyPerf = nePerfEnd - nePerfStart;
+  const nestedHeavyPerf = nhPerfEnd - nhPerfStart;
+  let nestedEmptyMeasureUs;
+  let nestedHeavyMeasureUs;
+  if (perfMark) {
+    try {
+      perf.measure('arg-n-empty', 'arg-n-empty-s', 'arg-n-empty-e');
+      const emptyEntries = perf.getEntriesByName('arg-n-empty');
+      const emptyLast = emptyEntries[emptyEntries.length - 1];
+      if (emptyLast && Number.isFinite(emptyLast.duration)) {
+        nestedEmptyMeasureUs = round2(
+          (emptyLast.duration * 1000) / NESTED_ITERS,
+        );
+      }
+      perf.clearMarks('arg-n-empty-s');
+      perf.clearMarks('arg-n-empty-e');
+      perf.clearMeasures('arg-n-empty');
+    } catch (_) {
+      nestedEmptyMeasureUs = undefined;
+    }
+    try {
+      perf.measure('arg-n-heavy', 'arg-n-heavy-s', 'arg-n-heavy-e');
+      const heavyEntries = perf.getEntriesByName('arg-n-heavy');
+      const heavyLast = heavyEntries[heavyEntries.length - 1];
+      if (heavyLast && Number.isFinite(heavyLast.duration)) {
+        nestedHeavyMeasureUs = round2(
+          (heavyLast.duration * 1000) / NESTED_ITERS,
+        );
+      }
+      perf.clearMarks('arg-n-heavy-s');
+      perf.clearMarks('arg-n-heavy-e');
+      perf.clearMeasures('arg-n-heavy');
+    } catch (_) {
+      nestedHeavyMeasureUs = undefined;
+    }
+  }
+
   let measureHeavyUs;
   if (perfMark) {
     try {
@@ -241,6 +311,26 @@ try {
       con_log_native: conLogNative,
       con_dir_native: conDirNative,
       console_lies: consoleLies,
+      nested_worker_heavy_us: round2(
+        (nestedHeavyWall * 1000) / NESTED_ITERS,
+      ),
+      nested_worker_empty_us: round2(
+        (nestedEmptyWall * 1000) / NESTED_ITERS,
+      ),
+      nested_worker_delta_us: round2(
+        ((nestedHeavyWall - nestedEmptyWall) * 1000) / NESTED_ITERS,
+      ),
+      nested_worker_heavy_perf_us: round2(
+        (nestedHeavyPerf * 1000) / NESTED_ITERS,
+      ),
+      nested_worker_empty_perf_us: round2(
+        (nestedEmptyPerf * 1000) / NESTED_ITERS,
+      ),
+      nested_worker_heavy_measure_us: nestedHeavyMeasureUs,
+      nested_worker_empty_measure_us: nestedEmptyMeasureUs,
+      nested_worker_heavy_lie_ms: round2(nestedHeavyWall - nestedHeavyPerf),
+      nested_worker_empty_lie_ms: round2(nestedEmptyWall - nestedEmptyPerf),
+      nested_worker_iters: NESTED_ITERS,
     },
   });
 } catch (_e) {

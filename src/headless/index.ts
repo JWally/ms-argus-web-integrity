@@ -48,6 +48,7 @@ import getConsoleTiming from './getConsoleTiming';
 import getConsoleTimingWorker from './getConsoleTimingWorker';
 import getPlatformEstimate from './getPlatformEstimate';
 import { getSystemFonts } from './getSystemFonts';
+import getWorkerModuleImportChain from './getWorkerModuleImportChain';
 import type {
   CdpSignals,
   HeadlessFingerprint,
@@ -164,7 +165,6 @@ function detectDevTools(): boolean {
   // analysts who explicitly disable that setting are themselves
   // a small fraction of the surface we care about.
   try {
-     
     const probe = new Function('debu' + 'gger;');
     const start = performance.now();
     (probe as () => void)();
@@ -589,6 +589,7 @@ async function detectCdp(): Promise<CdpSignals> {
   // then it runs in the worker realm while the iframe bench occupies
   // main. The await rejoins them at the end of detectCdp.
   const workerPromise = getConsoleTimingWorker();
+  const workerModuleImportChainPromise = getWorkerModuleImportChain();
   const signals = {
     cdcGlobals: checkCdcGlobals(),
     pwBindings: checkPwBindings(),
@@ -600,7 +601,11 @@ async function detectCdp(): Promise<CdpSignals> {
     ownPropsNative: isOwnPropsNative(),
     isTrustedProbe: probeIsTrusted(),
   };
-  return { ...signals, consoleTimingWorker: await workerPromise };
+  const [consoleTimingWorker, workerModuleImportChain] = await Promise.all([
+    workerPromise,
+    workerModuleImportChainPromise,
+  ]);
+  return { ...signals, consoleTimingWorker, workerModuleImportChain };
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

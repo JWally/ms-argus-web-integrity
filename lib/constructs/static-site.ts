@@ -113,36 +113,43 @@ export class StaticSiteConstruct extends Construct {
     }
 
     // 4) Create the CloudFront distribution with minimal config
-    // Create cache policies
-    const staticAssetsCachePolicy = new CachePolicy(
-      this,
-      'StaticAssetsCachePolicy',
-      {
-        cachePolicyName: `${props.stage}-argus-static-assets-cache`,
-        comment: 'Cache policy for static assets with compression',
-        defaultTtl: Duration.days(30),
-        maxTtl: Duration.days(365),
-        minTtl: Duration.seconds(0),
-        enableAcceptEncodingBrotli: true,
-        enableAcceptEncodingGzip: true,
-        headerBehavior: CacheHeaderBehavior.none(),
-        cookieBehavior: CacheCookieBehavior.none(),
-        queryStringBehavior: CacheQueryStringBehavior.none(),
-      },
-    );
+    // Create cache policies. The `e2e` stack is a throwaway test target and
+    // the account sits near the CloudFront custom-cache-policy limit (20), so
+    // it uses AWS *managed* policies (which consume zero custom slots) instead
+    // of minting its own. Behavior is equivalent for our purposes:
+    // CACHING_OPTIMIZED (assets, gzip/brotli) + CACHING_DISABLED (html no-cache).
+    // dev-jw / prod keep their tuned custom policies unchanged.
+    const useManagedCachePolicies = props.stage === 'e2e';
 
-    const htmlCachePolicy = new CachePolicy(this, 'HtmlCachePolicy', {
-      cachePolicyName: `${props.stage}-argus-html-no-cache`,
-      comment: 'No cache policy for HTML files with compression',
-      defaultTtl: Duration.seconds(0),
-      maxTtl: Duration.seconds(86400), // 1 day max
-      minTtl: Duration.seconds(0),
-      enableAcceptEncodingBrotli: true,
-      enableAcceptEncodingGzip: true,
-      headerBehavior: CacheHeaderBehavior.none(),
-      cookieBehavior: CacheCookieBehavior.none(),
-      queryStringBehavior: CacheQueryStringBehavior.none(),
-    });
+    const staticAssetsCachePolicy = useManagedCachePolicies
+      ? CachePolicy.CACHING_OPTIMIZED
+      : new CachePolicy(this, 'StaticAssetsCachePolicy', {
+          cachePolicyName: `${props.stage}-argus-static-assets-cache`,
+          comment: 'Cache policy for static assets with compression',
+          defaultTtl: Duration.days(30),
+          maxTtl: Duration.days(365),
+          minTtl: Duration.seconds(0),
+          enableAcceptEncodingBrotli: true,
+          enableAcceptEncodingGzip: true,
+          headerBehavior: CacheHeaderBehavior.none(),
+          cookieBehavior: CacheCookieBehavior.none(),
+          queryStringBehavior: CacheQueryStringBehavior.none(),
+        });
+
+    const htmlCachePolicy = useManagedCachePolicies
+      ? CachePolicy.CACHING_DISABLED
+      : new CachePolicy(this, 'HtmlCachePolicy', {
+          cachePolicyName: `${props.stage}-argus-html-no-cache`,
+          comment: 'No cache policy for HTML files with compression',
+          defaultTtl: Duration.seconds(0),
+          maxTtl: Duration.seconds(86400), // 1 day max
+          minTtl: Duration.seconds(0),
+          enableAcceptEncodingBrotli: true,
+          enableAcceptEncodingGzip: true,
+          headerBehavior: CacheHeaderBehavior.none(),
+          cookieBehavior: CacheCookieBehavior.none(),
+          queryStringBehavior: CacheQueryStringBehavior.none(),
+        });
 
     // Response headers policy with CORS for cross-origin script loading
     const corsResponseHeadersPolicy = new ResponseHeadersPolicy(

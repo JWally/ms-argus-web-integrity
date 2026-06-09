@@ -32,7 +32,30 @@ interface RunResult {
   durationMs: number;
 }
 
+// Drive the DEPLOYED, isolated e2e SDK (static-integrity-e2e.argus.pw), which
+// serves loader/iframe/worker so the real Worker submission path runs. The old
+// localhost harness loaded a local build whose iframe fetched the worker
+// cross-origin and only ever exercised the now-removed iframe fallback — so it
+// never tested the worker path. Records still land in the dev-jw table (the e2e
+// SDK submits to the dev-jw API), which integrity-store reads by default.
+// Override the target with ARGUS_E2E_LOADER_URL.
+const E2E_LOADER_URL =
+  process.env.ARGUS_E2E_LOADER_URL ??
+  'https://static-integrity-e2e.argus.pw/argus-loader.iife.js';
+const HARNESS_URL = 'https://argus-e2e-harness.invalid/';
+const HARNESS_HTML = `<!doctype html><html><head><meta charset="utf-8"></head><body><script src="${E2E_LOADER_URL}"></script></body></html>`;
+
 test.describe('loader end-to-end', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route(HARNESS_URL, (route) =>
+      route.fulfill({ contentType: 'text/html', body: HARNESS_HTML }),
+    );
+    await page.goto(HARNESS_URL, { waitUntil: 'domcontentloaded' });
+    await expect
+      .poll(() => page.evaluate(() => typeof (window as any).argus === 'object'))
+      .toBeTruthy();
+  });
+
   test('loader wraps integrity flow in srcdoc iframe, posts session id back, server stored the record', async ({
     page,
   }) => {
@@ -41,19 +64,12 @@ test.describe('loader end-to-end', () => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
 
-    await page.goto('/test-loader.html');
-
-    // 1. Loader registered
-    await expect
-      .poll(() => page.evaluate(() => typeof (window as any).argus === 'object'))
-      .toBeTruthy();
-
     const merchantSessionId = `pw-${Date.now()}`;
 
     // 2. Trigger the run and capture the result
     const cpi = process.env.ARGUS_TEST_CPI;
     const result = await page.evaluate(async ({ sid, c }) => {
-      return await (window as any).__runArgus({ sessionId: sid, timeoutMs: 20000, cpi: c });
+      return await (window as any).argus.run({ sessionId: sid, timeoutMs: 20000, cpi: c });
     }, { sid: merchantSessionId, c: cpi }) as RunResult;
 
     // 3. Result shape
@@ -166,11 +182,6 @@ test.describe('loader end-to-end', () => {
   });
 
   test('superseded run rejects first, resolves second', async ({ page }) => {
-    await page.goto('/test-loader.html');
-    await expect
-      .poll(() => page.evaluate(() => typeof (window as any).argus === 'object'))
-      .toBeTruthy();
-
     const cpi = process.env.ARGUS_TEST_CPI;
     const outcome = await page.evaluate(async (c) => {
       const a = (window as any).argus.run({ sessionId: 'first', timeoutMs: 20000, cpi: c });
@@ -193,11 +204,6 @@ test.describe('loader end-to-end', () => {
   });
 
   test('destroy() rejects in-flight run', async ({ page }) => {
-    await page.goto('/test-loader.html');
-    await expect
-      .poll(() => page.evaluate(() => typeof (window as any).argus === 'object'))
-      .toBeTruthy();
-
     const err = await page.evaluate(async () => {
       const p = (window as any).argus.run({ sessionId: 'will-be-killed', timeoutMs: 20000 });
       (window as any).argus.destroy();

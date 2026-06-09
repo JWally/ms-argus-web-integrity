@@ -46,4 +46,22 @@ new AppStack(app, "ms-argus-web-dev-jw", {
   synthesizer: new CliCredentialsStackSynthesizer(),
 });
 
+// Isolated e2e static stack — serves loader/iframe/worker same-origin from
+// static-integrity-e2e.argus.pw so e2e tests exercise the real Worker path
+// (the dev-jw split serves the static bundle on localhost while the worker is
+// on the CDN, which never tested the worker submission). Build it with
+// `ARGUS_STAGE=e2e ARGUS_API_STAGE=dev-jw` (see `npm run deploy:e2e`) so the
+// bundle submits to the existing dev-jw API — no standalone API stack needed.
+new AppStack(app, "ms-argus-web-e2e", {
+  env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+  environment: "e2e",
+  stackName: "ms-argus-web-e2e",
+  rootDomain: ROOT_DOMAIN,
+  stage: "e2e",
+  region: "us-east-1",
+  account: AWS_ACCOUNT_ID,
+  siteDomain: SITE_DOMAIN,
+  synthesizer: new CliCredentialsStackSynthesizer(),
+});
+
 app.synth();

@@ -22,15 +22,11 @@
  */
 
 import { collectIntegrity, type IntegrityResult } from './integrity';
-import { runArgusVm } from './vm/argus-vm';
 import type { SigintConfig } from './utils/sigint';
 import {
-  buildEnvelope,
-  computeKeyId,
   type Attestation,
   type AttestationRequest,
 } from './utils/attestation';
-import { getCryptoId, signWithCryptoId } from './utils/get-crypto-id';
 import { getPristineRefs } from './utils/pristine-iframe';
 import type { RunRequest, WorkerOutbound } from './worker-runtime/protocol';
 
@@ -228,14 +224,6 @@ function readAttestRequest(): AttestationRequest | null {
   return { purpose, payload, ttlSeconds };
 }
 
-async function buildAttestation(req: AttestationRequest): Promise<Attestation> {
-  const keys = await getCryptoId();
-  const keyId = await computeKeyId(keys.publicKey);
-  const { envelope } = buildEnvelope(req, keyId);
-  const signature = await signWithCryptoId(envelope);
-  return { envelope, signature, publicKey: keys.publicKey, keyId };
-}
-
 function postBack(msg: Record<string, unknown>): void {
   // Replies travel over a MessagePort the loader pre-armed in the srcdoc
   // HTML and transferred in at iframe-load time. Routing through the
@@ -366,14 +354,14 @@ async function main(): Promise<void> {
     let attestation: Attestation | null = null;
     let attestError: string | null = parseAttestError;
 
-    // PHASE 1: try the worker path first. The worker currently returns
-    // a `worker_phase1_stub` error (it's a stub until Phase 2 swaps in
-    // the real VM host). On ANY worker failure — stub error, fetch
-    // failure, timeout, error event — fall back to the legacy in-iframe
-    // runArgusVm so the SDK keeps working through the migration. Once
-    // Phase 2 lands and we've validated worker submissions, this
-    // fallback gets removed.
-    let useFallback = false;
+    // The dedicated worker is the ONLY submission path. `addInitScript`
+    // (CDP Page.addScriptToEvaluateOnNewDocument) cannot reach worker
+    // scope, so a page-realm prototype hook can't MITM the crypto /
+    // serialization chokepoint there. There is intentionally NO iframe-side
+    // fallback: an attacker who blocks Worker creation/fetch/start must not
+    // be able to downgrade the scan into the page-poisonable iframe realm
+    // (Class C downgrade — see META-PROTECTIONS.md Gap 2b). Worker failure →
+    // no submission; the merchant treats a missing Argus result as not-clean.
     try {
       const w = await runViaWorker(
         fingerprint,
@@ -385,47 +373,12 @@ async function main(): Promise<void> {
       sessionIdResult = w.sessionId;
       submissionError = w.submissionError ?? null;
       attestation = w.attestation;
-      // Worker's attestError takes precedence over our parse-time one
-      // (the worker actually attempted the build).
       attestError = w.attestError;
     } catch (e) {
-      useFallback = true;
-      // Log silently — drop-console terser strips these in prod. The
-      // metric for fallback frequency would have to come from server
-      // side (e.g., counting submissions with absent worker_attest).
-      console.warn('[iframe] worker path failed, falling back:', e);
-    }
-
-    if (useFallback) {
-      // Mirror the worker's pageContext injection for the legacy in-iframe
-      // path so meta.page lands consistently regardless of which path
-      // produces the submission. Bytecode reads meta as a whole via 0x11
-      // (no per-field slice handlers), so attaching here is sufficient.
-      if (pageContext) {
-        const meta = (fingerprint as { meta?: Record<string, unknown> }).meta;
-        if (meta && typeof meta === 'object') {
-          (meta as Record<string, unknown>).page = pageContext;
-        }
-      }
-      const vm = await runArgusVm(
-        fingerprint,
-        API_BASE,
-        SIGINT_CONFIG,
-        cpi,
-        undefined,
-        undefined,
-        runSessionId,
-      );
-      sessionIdResult = vm.sessionId;
-      submissionError = vm.submissionError ?? null;
-      // Build attestation here — Phase 2 will move this into the worker.
-      if (attestReq && !parseAttestError) {
-        try {
-          attestation = await buildAttestation(attestReq);
-        } catch (e) {
-          attestError = (e as Error).message;
-        }
-      }
+      // No fallback by design. Record the failure so the empty-sessionId
+      // branch below posts argusDone:false. drop-console strips this in prod.
+      submissionError = `worker_unavailable: ${(e as Error).message}`;
+      console.warn('[iframe] worker path failed, no fallback:', e);
     }
 
     if (!sessionIdResult) {

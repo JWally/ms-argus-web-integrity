@@ -12,12 +12,18 @@ const build = process.env.BUILD || 'dev';
 //   static.argus.pw/argus-loader.js         → built with ARGUS_STAGE=prod
 // Merchants do not configure API endpoints — they pick the right loader URL.
 const stage = process.env.ARGUS_STAGE || 'dev-jw';
+// API + sigint endpoints can target a different stage than the static bundle
+// host. The isolated `e2e` static stack serves loader/iframe/worker from
+// static-integrity-e2e but submits to the EXISTING dev-jw API/sigint, so it
+// needs no standalone API stack. Defaults to `stage` (the normal case).
+const apiStage = process.env.ARGUS_API_STAGE || stage;
 const isProd = stage === 'prod';
-const apiBase = isProd
+const isApiProd = apiStage === 'prod';
+const apiBase = isApiProd
   ? 'https://api.argus.pw'
-  : `https://api-${stage}.argus.pw`;
+  : `https://api-${apiStage}.argus.pw`;
 const sigintBaseDomain = 'argus.pw';
-const sigintStagePrefix = isProd ? '' : `${stage}-`;
+const sigintStagePrefix = isApiProd ? '' : `${apiStage}-`;
 
 const shared = {
   plugins: {

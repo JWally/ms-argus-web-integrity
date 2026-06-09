@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Argus Autorun (adversarial harness)</title>
+  </head>
+  <body>
+    <!--
+      DOM-mediated run channel for adversarial drivers whose page.evaluate
+      runs in an isolated world (e.g. Patchright) and therefore can't see
+      the main-world `window.argus`. The page itself runs argus in the main
+      world and writes the result into #argus-out; drivers read it via the
+      DOM (shared across JS worlds), not via a main-world global.
+
+      Query params:
+        cpi        merchant CPI header (required for a 200 submission)
+        sid        merchant session id (default autorun-<ts>)
+        timeoutMs  run timeout (default 30000)
+
+      Done signal: #argus-out gets attribute data-done="1"; its textContent
+      is JSON { ok, argusSessionId, sessionId } or { ok:false, error }.
+    -->
+    <pre id="argus-out">pending</pre>
+    <script src="/dist/argus-loader.iife.js"></script>
+    <script>
+      (async function () {
+        const out = document.getElementById('argus-out');
+        const emit = (obj) => {
+          out.textContent = JSON.stringify(obj);
+          out.setAttribute('data-done', '1');
+        };
+        try {
+          const q = new URLSearchParams(location.search);
+          const cpi = q.get('cpi') || undefined;
+          const sid = q.get('sid') || 'autorun-' + Date.now();
+          const timeoutMs = Number(q.get('timeoutMs') || '30000');
+
+          // Loader IIFE is synchronous, but wait defensively in case a
+          // slow/instrumented engine defers script execution.
+          for (let i = 0; i < 50 && !window.argus; i++) {
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          if (!window.argus) return emit({ ok: false, error: 'window.argus missing' });
+
+          const r = await window.argus.run({ sessionId: sid, timeoutMs, cpi });
+          emit({ ok: true, argusSessionId: r.argusSessionId, sessionId: r.sessionId });
+        } catch (err) {
+          emit({ ok: false, error: (err && err.message) || String(err) });
+        }
+      })();
+    </script>
+  </body>
+</html>
