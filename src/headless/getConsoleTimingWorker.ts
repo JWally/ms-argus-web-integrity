@@ -175,17 +175,6 @@ try {
   const conDirNative = isNativeFn(con && con.dir);
   const consoleLies = countConsoleLies(con);
 
-  // Binary CDP-attach probe (threshold-free) in the worker realm.
-  // %s forces toString only when a CDP consumer serializes the message.
-  // Worker-scope matters: Patchright/Puppeteer attach inspector sessions
-  // to workers too, and a human's DevTools console context is usually
-  // the main frame, not this blob worker — so the worker variant is
-  // less prone to the DevTools-open false positive than the iframe one.
-  let fmtToStringInvoked = false;
-  try {
-    con.log('%s', { toString() { fmtToStringInvoked = true; return ''; } });
-  } catch (_) { /* leave false */ }
-
   for (let i = 0; i < 100; i++) con.log('warmup');
 
   const t0 = perf.now();
@@ -321,7 +310,6 @@ try {
       date_now_native: dateNowNative,
       con_log_native: conLogNative,
       con_dir_native: conDirNative,
-      fmt_tostring_invoked: fmtToStringInvoked,
       console_lies: consoleLies,
       nested_worker_heavy_us: round2(
         (nestedHeavyWall * 1000) / NESTED_ITERS,
