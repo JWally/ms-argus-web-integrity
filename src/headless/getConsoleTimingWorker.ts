@@ -175,6 +175,19 @@ try {
   const conDirNative = isNativeFn(con && con.dir);
   const consoleLies = countConsoleLies(con);
 
+  // CDP-attachment tripwire in the worker realm: prototype-chain Proxy
+  // ownKeys trap. Fires only when a CDP consumer builds a preview and
+  // walks the prototype chain. Patchright/Puppeteer attach worker
+  // sessions too, so the worker copy catches worker-scope inspectors.
+  let protoProxyTrapFired = false;
+  try {
+    const trap = new self.Proxy({}, {
+      ownKeys() { protoProxyTrapFired = true; return []; },
+      getOwnPropertyDescriptor() { return { enumerable: true, configurable: true }; },
+    });
+    con.debug(self.Object.create(trap));
+  } catch (_) { /* leave false */ }
+
   for (let i = 0; i < 100; i++) con.log('warmup');
 
   const t0 = perf.now();
@@ -310,6 +323,7 @@ try {
       date_now_native: dateNowNative,
       con_log_native: conLogNative,
       con_dir_native: conDirNative,
+      cdp_proto_proxy_trap: protoProxyTrapFired,
       console_lies: consoleLies,
       nested_worker_heavy_us: round2(
         (nestedHeavyWall * 1000) / NESTED_ITERS,

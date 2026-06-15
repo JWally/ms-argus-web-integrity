@@ -173,6 +173,36 @@ export interface ConsoleTiming {
   /** `console.dir` is native in the bench iframe. */
   con_dir_native: boolean;
   /**
+   * CDP-attachment tripwire via a prototype-chain `Proxy` `ownKeys`
+   * trap. We hang a Proxy on a throwaway object's PROTOTYPE
+   * (`Object.create(trap)`) and `console.debug` it. When a CDP client
+   * has `Runtime.enable` on (or DevTools is open), Chrome builds an
+   * object preview for the logged arg and walks UP the prototype chain
+   * to enumerate inherited keys — tripping the proxy's `[[OwnKeys]]`
+   * trap. With no CDP/DevTools consumer no preview is built, the chain
+   * is never walked, and the trap never fires.
+   *
+   * Unlike the `%s`-toString path (eager, fires on ALL Chrome — useless),
+   * this is the LAZY preview path: confirmed binary-separable on
+   * identical hardware (real Chrome control → false, headed-Chrome-over-
+   * CDP → true; user's 2026-06-15 A/B). Detects CDP *attachment* itself,
+   * so it survives a headed, `webdriver`-off, fingerprint-clean browser
+   * where every other tell is dead.
+   *
+   * IMPORTANT placement detail: the proxy must sit on the PROTOTYPE, not
+   * be the logged value — a direct-value proxy does NOT fire (V8 guards
+   * the logged object's own surface; the prototype-enumeration path is
+   * unguarded as of 2026). Fires across log/debug/dir/table/error/warn/
+   * trace/assert.
+   *
+   * CAVEATS (collect-only until scored): (1) also fires for a real human
+   * with DevTools open → weight, not verdict; (2) defeatable via
+   * `Runtime.disable` / isolated worlds (Nodriver, rebrowser-patches);
+   * (3) Blink-only. Source: svebaa "How V8 Leaks Your Headless
+   * Browser's Identity" + Castle; user NOTES_NOTES_NOTES §III.
+   */
+  cdp_proto_proxy_trap?: boolean;
+  /**
    * Count of `console.*` methods detected as wrapped/patched in the
    * bench realm. Only the worker bench populates this field — it's
    * the new home for the v3-closure scan after `console` was removed

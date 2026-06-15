@@ -193,6 +193,29 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
   // separate prototype chains.
   const dateNow = win.Date.now;
 
+  // CDP-attachment tripwire: prototype-chain Proxy ownKeys trap. Only
+  // fires when a CDP Runtime consumer (or DevTools) builds an object
+  // preview and walks the prototype chain. Lazy path — does NOT fire on
+  // a plain Chrome with no consumer. See ConsoleTiming.cdp_proto_proxy_trap.
+  let protoProxyTrapFired = false;
+  try {
+    const trap = new win.Proxy(
+      {},
+      {
+        ownKeys() {
+          protoProxyTrapFired = true;
+          return [];
+        },
+        getOwnPropertyDescriptor() {
+          return { enumerable: true, configurable: true };
+        },
+      },
+    );
+    con.debug(win.Object.create(trap));
+  } catch {
+    /* Proxy/console unavailable — leave false */
+  }
+
   try {
     // Warm up to amortize V8 JIT and any cold-cache cost.
     for (let i = 0; i < 100; i++) con.log('warmup');
@@ -290,6 +313,7 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
       date_now_native: dateNowNative,
       con_log_native: conLogNative,
       con_dir_native: conDirNative,
+      cdp_proto_proxy_trap: protoProxyTrapFired,
     };
   } catch {
     return undefined;
