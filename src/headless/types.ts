@@ -415,6 +415,23 @@ export interface HeadlessFingerprint {
   headlessRating: number;
   /** % of stealth signals that are true */
   stealthRating: number;
+  /**
+   * Popup-blocker-off tell. A load-time, NON-gestured `window.open` is
+   * blocked by every default-config real browser (returns null), but a
+   * CDP browser launched with `--disable-popup-blocking` (Playwright /
+   * Puppeteer / patchright defaults) lets it through (returns a window,
+   * which we close immediately). Real users never see a popup — theirs
+   * is blocked. Uses `width/height` ONLY, never positional `top/left`,
+   * to stay clear of the Chromium popup-crash codepath: this DETECTS,
+   * it does not crash.
+   *
+   * A launch-CONFIG leak, not a protocol leak — defeatable by an operator
+   * who strips the flag — so it's a stacking weight, not a verdict. Value
+   * here: it catches stealth forks (patchright) that keep the default flag
+   * while evading the CDP-attach trap via `Runtime.disable`. Standalone
+   * (not folded into `likeHeadless`) so it stays collect-only until scored.
+   */
+  popupBlockerOff?: boolean;
   /** Resolved CSS system font string — OS inference (Gecko only; Blink returns generic names) */
   systemFonts: string;
   /** Platform feature confidence scores */
