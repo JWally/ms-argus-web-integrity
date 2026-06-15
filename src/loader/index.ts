@@ -677,6 +677,53 @@ const argus: ArgusGlobal = {
 };
 
 const win = window as unknown as Record<string, unknown>;
+
+/**
+ * EXPERIMENTAL, OPT-IN crash probe — Chromium bug 340836884.
+ *
+ * When explicitly enabled (`?argusCrashProbe=1` on the page URL, or
+ * `window.__argusCrashProbe === true`), runs a gestureless positional
+ * `window.open` from a `data:` iframe. On a CDP-attached renderer
+ * (Playwright / Puppeteer / MCP, which all default to
+ * `--disable-popup-blocking`) this crashes the renderer — confirmed on
+ * Chrome 131/147/148/149. A real user keeps the default popup blocker,
+ * which suppresses the positional popup before the buggy codepath, so
+ * they see nothing and never crash.
+ *
+ * DEFAULT OFF. It does NOTHING on normal traffic — no flag, no fire — so
+ * Googlebot's headless renderer, synthetic monitors, and humans are all
+ * untouched unless the experimenter sets the flag. Blink-only (the bug
+ * doesn't exist on Gecko/WebKit; harmless no-op there). This is a
+ * loaded gun: it couples detection with response and can be patched out
+ * by any Chrome release. See memory project_chromium_popup_crash_bug.md.
+ */
+function maybeRunCrashProbe(): void {
+  try {
+    const enabled =
+      win.__argusCrashProbe === true ||
+      /[?&]argusCrashProbe=1(?:&|$)/.test(location.search);
+    if (!enabled) return;
+    const ua = navigator.userAgent;
+    if (!/Chrome|Chromium|CriOS/.test(ua) || /\bFirefox\b/.test(ua)) return;
+    const detonate = (): void => {
+      try {
+        const f = document.createElement('iframe');
+        f.src = 'data:text/html,<body></body>';
+        (document.body || document.documentElement).appendChild(f);
+        (f.contentWindow as Window | null)?.open('', '', 'top=9999');
+      } catch {
+        /* ignore — best-effort */
+      }
+    };
+    if (document.body) detonate();
+    else window.addEventListener('DOMContentLoaded', detonate, { once: true });
+  } catch {
+    /* ignore */
+  }
+}
+
+maybeRunCrashProbe();
+
 if (win.argus) {
   // Double-load. Don't overwrite — the first loader may already have in-flight
   // runs with message listeners bound to its closure. Fail loud.
