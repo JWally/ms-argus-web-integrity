@@ -173,6 +173,30 @@ export interface ConsoleTiming {
   /** `console.dir` is native in the bench iframe. */
   con_dir_native: boolean;
   /**
+   * Binary CDP-attach tell, threshold-free. We call
+   * `console.log('%s', { toString() { hit = true; return ''; } })` and
+   * read `hit` synchronously. The `%s` substitution only forces the
+   * argument's `toString` when something actually consumes the console
+   * message: a CDP client that issued `Runtime.enable` (Playwright,
+   * Puppeteer, Selenium-w/-CDP) serializes the formatted string onto
+   * the inspector wire at call time. With no consumer the message is
+   * dropped and `toString` never runs → `hit` stays false.
+   *
+   * This is the boolean form of the `log_heavy_us` timing bench (same
+   * mechanism — inspector serialization) but with no magnitude floor,
+   * so it does not depend on how fast/slow the serialization is. That
+   * makes it the complement to the timing rule against stealth builds
+   * that suppress serialization cost into the mobile-noise band (the
+   * ~17µs evader that slips under `BENCH_BOTH_HOT_US`): it either
+   * serializes (→ caught) or it doesn't, regardless of speed.
+   *
+   * CAVEAT — also fires when a human has DevTools open (the frontend
+   * consumes the same message). Ship as collect-only; do NOT score as
+   * STRICT until real-user telemetry quantifies the DevTools-open
+   * false-positive rate. Blink-only (relies on V8's inspector).
+   */
+  fmt_tostring_invoked?: boolean;
+  /**
    * Count of `console.*` methods detected as wrapped/patched in the
    * bench realm. Only the worker bench populates this field — it's
    * the new home for the v3-closure scan after `console` was removed

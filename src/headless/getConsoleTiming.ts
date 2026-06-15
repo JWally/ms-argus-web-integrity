@@ -193,6 +193,24 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
   // separate prototype chains.
   const dateNow = win.Date.now;
 
+  // Binary CDP-attach probe (threshold-free). The `%s` substitution
+  // only forces `toString` when a consumer (CDP `Runtime.enable` or an
+  // open DevTools frontend) reads the formatted message. No consumer →
+  // message dropped → toString never runs. Complements the timing
+  // bench below: catches serialization that's real but too fast to
+  // clear the magnitude floor. See ConsoleTiming.fmt_tostring_invoked.
+  let fmtToStringInvoked = false;
+  try {
+    con.log('%s', {
+      toString() {
+        fmtToStringInvoked = true;
+        return '';
+      },
+    });
+  } catch {
+    /* console replaced / format unsupported — leave false */
+  }
+
   try {
     // Warm up to amortize V8 JIT and any cold-cache cost.
     for (let i = 0; i < 100; i++) con.log('warmup');
@@ -290,6 +308,7 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
       date_now_native: dateNowNative,
       con_log_native: conLogNative,
       con_dir_native: conDirNative,
+      fmt_tostring_invoked: fmtToStringInvoked,
     };
   } catch {
     return undefined;
