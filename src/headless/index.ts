@@ -148,38 +148,6 @@ function hasSoftwareRenderer(
   );
 }
 
-/**
- * Popup-blocker-off probe (collect-only). A non-gestured load-time
- * `window.open` is blocked by every default-config browser (returns
- * null); a CDP browser launched with `--disable-popup-blocking`
- * (Playwright / Puppeteer / patchright defaults) lets it through. We
- * open a 1×1 popup with NO gesture and close it instantly — a real
- * user's blocker means they never see one.
- *
- * Uses `width`/`height` ONLY, never positional `top`/`left`: positional
- * features are the Chromium popup-CRASH trigger, and this is a DETECTOR,
- * not a crasher. Config leak (defeatable by stripping the flag), so it's
- * a stacking weight — but it catches stealth forks (patchright) that keep
- * the default flag while evading the CDP-attach trap.
- * See HeadlessFingerprint.popupBlockerOff.
- */
-function detectPopupBlockerOff(): boolean {
-  try {
-    const w = topWin.open('about:blank', '_blank', 'width=1,height=1');
-    if (w) {
-      try {
-        w.close();
-      } catch {
-        /* nothing to close */
-      }
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
 function detectDevTools(): boolean {
   // Primary: `debugger;` statement timing. Closed devtools → no-op
   // (sub-microsecond). Open devtools with the debugger panel active →
@@ -713,7 +681,6 @@ export default async function getHeadlessFeatures(
       stealthRating: calculateRating(
         stealth as unknown as Record<string, boolean>,
       ),
-      popupBlockerOff: detectPopupBlockerOff(),
       systemFonts,
       platformEstimate: [scores || {}, highestScore || 0],
       historyLength: history.length,
