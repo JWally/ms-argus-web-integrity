@@ -25,9 +25,13 @@ const apiBase = isApiProd
 const sigintBaseDomain = 'argus.pw';
 const sigintStagePrefix = isApiProd ? '' : `${apiStage}-`;
 const workerIntegrity = process.env.ARGUS_WORKER_INTEGRITY || '';
+const iframeIntegrity = process.env.ARGUS_IFRAME_INTEGRITY || '';
 
 if (build === 'iframe' && !workerIntegrity) {
   throw new Error('ARGUS_WORKER_INTEGRITY is required when BUILD=iframe');
+}
+if (build === 'loader' && !iframeIntegrity) {
+  throw new Error('ARGUS_IFRAME_INTEGRITY is required when BUILD=loader');
 }
 
 const shared = {
@@ -167,6 +171,10 @@ const configs = {
     },
     plugins: [
       shared.plugins.nodeResolve,
+      replace({
+        preventAssignment: true,
+        __ARGUS_IFRAME_INTEGRITY__: JSON.stringify(iframeIntegrity),
+      }),
       shared.plugins.typescript,
       terser({
         compress: { passes: 2, drop_console: false, drop_debugger: true },

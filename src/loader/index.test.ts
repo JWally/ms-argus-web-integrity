@@ -43,6 +43,7 @@ describe('argus-loader', () => {
     // Fresh module state per test (the loader captures currentScript
     // at parse time).
     vi.resetModules();
+    vi.stubGlobal('__ARGUS_IFRAME_INTEGRITY__', 'sha384-testdigest');
     delete (window as unknown as { argus?: unknown }).argus;
     document.head.innerHTML = '';
     document.body.innerHTML = '';
@@ -85,6 +86,61 @@ describe('argus-loader', () => {
     ).argus._state;
     expect(state.running).toBe(false);
     expect(state.lastRunId).toBeNull();
+  });
+
+  it('injects the iframe bundle with browser-enforced SRI', async () => {
+    installFakeScript(
+      'https://static-integrity-dev-jw.argus.pw/argus-loader.iife.js',
+    );
+    await import('./index');
+
+    const argus = (
+      window as unknown as {
+        argus: { run: (opts?: { timeoutMs?: number }) => Promise<unknown> };
+      }
+    ).argus;
+    const run = argus.run({ timeoutMs: 0 });
+    run.catch(() => {
+      /* expected in happy-dom: the iframe script never actually loads */
+    });
+
+    const iframe = document.querySelector<HTMLIFrameElement>(
+      'iframe[data-argus-loader]',
+    );
+    expect(iframe).toBeTruthy();
+    let script: HTMLScriptElement | null = null;
+    const body = iframe?.contentDocument?.body;
+    expect(body).toBeTruthy();
+    vi.spyOn(body!, 'appendChild').mockImplementation(((node: Node) => {
+      if (node instanceof HTMLScriptElement) {
+        script = node;
+        return node;
+      }
+      return HTMLElement.prototype.appendChild.call(body, node);
+    }) as typeof body.appendChild);
+
+    iframe?.dispatchEvent(new Event('load'));
+
+    expect(script?.src).toContain('argus-integrity-iframe.iife.js');
+    expect(script?.integrity).toBe('sha384-testdigest');
+    expect(script?.crossOrigin).toBe('anonymous');
+  });
+
+  it('fails closed when iframe integrity is not baked into the loader', async () => {
+    vi.unstubAllGlobals();
+    installFakeScript(
+      'https://static-integrity-dev-jw.argus.pw/argus-loader.iife.js',
+    );
+    await import('./index');
+
+    const argus = (
+      window as unknown as {
+        argus: { run: () => Promise<unknown> };
+      }
+    ).argus;
+
+    await expect(argus.run()).rejects.toThrow('iframe_integrity_missing');
+    expect(document.querySelector('iframe[data-argus-loader]')).toBeNull();
   });
 
   describe('data-on scheduling', () => {
