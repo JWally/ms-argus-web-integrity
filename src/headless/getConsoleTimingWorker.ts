@@ -91,6 +91,8 @@ const HEAVY = {
   other: { a: 1, b: 2, c: 3, d: 'hello', arr: [10, 20, 30] },
 };
 const NESTED_ITERS = 180;
+const ERROR_STACK_ITERS = 180;
+const ERROR_STACK_DEPTH = 120;
 const NATIVE_RE = /\\{\\s*\\[native code\\]\\s*\\}/;
 
 function isNativeFn(fn) {
@@ -185,6 +187,10 @@ function buildNested() {
     nested = { c: nested, i, s: 'x'.repeat(32) };
   }
   return nested;
+}
+
+function deep(k, fn) {
+  return k === 0 ? fn() : deep(k - 1, fn);
 }
 
 try {
@@ -283,6 +289,22 @@ try {
   const nestedHeavyWall = nhWallEnd - nhWallStart;
   const nestedEmptyPerf = nePerfEnd - nePerfStart;
   const nestedHeavyPerf = nhPerfEnd - nhPerfStart;
+  const esEmptyStart = +new self.Date();
+  for (let i = 0; i < ERROR_STACK_ITERS; i++) {
+    deep(ERROR_STACK_DEPTH, function () {});
+  }
+  const esEmptyEnd = +new self.Date();
+
+  const esHeavyStart = +new self.Date();
+  for (let i = 0; i < ERROR_STACK_ITERS; i++) {
+    deep(ERROR_STACK_DEPTH, function () {
+      con.error(new self.Error('argus-' + i), nested);
+    });
+  }
+  const esHeavyEnd = +new self.Date();
+
+  const errorStackEmptyMs = esEmptyEnd - esEmptyStart;
+  const errorStackHeavyMs = esHeavyEnd - esHeavyStart;
   let nestedEmptyMeasureUs;
   let nestedHeavyMeasureUs;
   if (perfMark) {
@@ -372,6 +394,13 @@ try {
       nested_worker_heavy_lie_ms: round2(nestedHeavyWall - nestedHeavyPerf),
       nested_worker_empty_lie_ms: round2(nestedEmptyWall - nestedEmptyPerf),
       nested_worker_iters: NESTED_ITERS,
+      error_stack_burst_delta_ms: round2(
+        errorStackHeavyMs - errorStackEmptyMs,
+      ),
+      error_stack_burst_empty_ms: round2(errorStackEmptyMs),
+      error_stack_burst_heavy_ms: round2(errorStackHeavyMs),
+      error_stack_burst_iters: ERROR_STACK_ITERS,
+      error_stack_burst_depth: ERROR_STACK_DEPTH,
       ...(debugVsPerf || {}),
     },
   });
