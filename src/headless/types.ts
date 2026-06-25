@@ -306,6 +306,24 @@ export interface ConsoleTiming {
   nested_worker_empty_lie_ms?: number;
   /** Iteration count used by the nested worker trap. */
   nested_worker_iters?: number;
+  /**
+   * Dedicated-worker deep-stack Error console burst. Ported from
+   * signal-lab's `worker-deep-stack-error-burst`: CDP/Log-enabled
+   * clients serialize stack frames and Error/object args per call, while
+   * real Chrome stays near-flat because `.stack` is never read.
+   *
+   * Positive-only vanilla-CDP canary. Patchright/nodriver can stay
+   * real-shaped when they avoid worker Log/Console enablement.
+   */
+  error_stack_burst_delta_ms?: number;
+  /** Empty recursive-stack loop wall time for the Error burst. */
+  error_stack_burst_empty_ms?: number;
+  /** Heavy `console.error(new Error(), nested)` loop wall time. */
+  error_stack_burst_heavy_ms?: number;
+  /** Iteration count used by the Error burst. */
+  error_stack_burst_iters?: number;
+  /** Recursive call depth used by the Error burst. */
+  error_stack_burst_depth?: number;
 }
 
 /**
