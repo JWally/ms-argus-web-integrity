@@ -45,6 +45,7 @@
 
 import { IS_BLINK } from '../utils/helpers';
 
+import { measureDebugVsPerf } from './consoleTimingMetrics';
 import type { ConsoleTiming } from './types';
 
 const N = 1000;
@@ -217,6 +218,8 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
   }
 
   try {
+    const debugVsPerf = measureDebugVsPerf(win);
+
     // Warm up to amortize V8 JIT and any cold-cache cost.
     for (let i = 0; i < 100; i++) con.log('warmup');
 
@@ -314,6 +317,7 @@ export default function getConsoleTiming(): ConsoleTiming | undefined {
       con_log_native: conLogNative,
       con_dir_native: conDirNative,
       cdp_proto_proxy_trap: protoProxyTrapFired,
+      ...debugVsPerf,
     };
   } catch {
     return undefined;

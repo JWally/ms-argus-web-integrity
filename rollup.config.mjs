@@ -24,6 +24,11 @@ const apiBase = isApiProd
   : `https://api-${apiStage}.argus.pw`;
 const sigintBaseDomain = 'argus.pw';
 const sigintStagePrefix = isApiProd ? '' : `${apiStage}-`;
+const workerIntegrity = process.env.ARGUS_WORKER_INTEGRITY || '';
+
+if (build === 'iframe' && !workerIntegrity) {
+  throw new Error('ARGUS_WORKER_INTEGRITY is required when BUILD=iframe');
+}
 
 const shared = {
   plugins: {
@@ -190,6 +195,7 @@ const configs = {
         __ARGUS_API_BASE__: JSON.stringify(apiBase),
         __ARGUS_SIGINT_BASE_DOMAIN__: JSON.stringify(sigintBaseDomain),
         __ARGUS_SIGINT_STAGE_PREFIX__: JSON.stringify(sigintStagePrefix),
+        __ARGUS_WORKER_INTEGRITY__: JSON.stringify(workerIntegrity),
         // URL of the worker bundle — fetched at runtime and wrapped in a
         // blob: URL so the spawned Worker stays same-origin to the iframe
         // (preserves cookie scope for POST_PAYLOAD).

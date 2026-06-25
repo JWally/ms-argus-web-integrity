@@ -85,6 +85,7 @@ const TIMEOUT_MS = 1500;
 const WORKER_SCRIPT = `
 const N = 1000;
 const M = 5000;
+const DEBUG_ITERS = 3000;
 const HEAVY = {
   l1: { l2: { l3: { l4: [1, 2, 3, 4, 5, 'abc', true, null] } } },
   other: { a: 1, b: 2, c: 3, d: 'hello', arr: [10, 20, 30] },
@@ -154,6 +155,30 @@ function countConsoleLies(con) {
 
 function round2(n) { return Math.round(n * 100) / 100; }
 
+function measureDebugVsPerf(con, perf) {
+  if (!con || typeof con.debug !== 'function' || !perf) return undefined;
+  try {
+    const p0 = perf.now();
+    for (let i = 0; i < DEBUG_ITERS; i++) perf.now();
+    const p1 = perf.now();
+
+    const d0 = perf.now();
+    for (let i = 0; i < DEBUG_ITERS; i++) con.debug('');
+    const d1 = perf.now();
+
+    const perfNowCallUs = ((p1 - p0) * 1000) / DEBUG_ITERS;
+    const debugEmptyUs = ((d1 - d0) * 1000) / DEBUG_ITERS;
+    return {
+      debug_empty_us: round2(debugEmptyUs),
+      perf_now_call_us: round2(perfNowCallUs),
+      debug_over_perf: round2(debugEmptyUs / Math.max(perfNowCallUs, 0.01)),
+      debug_iters: DEBUG_ITERS,
+    };
+  } catch (_) {
+    return undefined;
+  }
+}
+
 function buildNested() {
   let nested = { v: 1 };
   for (let i = 0; i < 20; i++) {
@@ -187,6 +212,8 @@ try {
     });
     con.debug(self.Object.create(trap));
   } catch (_) { /* leave false */ }
+
+  const debugVsPerf = measureDebugVsPerf(con, perf);
 
   for (let i = 0; i < 100; i++) con.log('warmup');
 
@@ -345,6 +372,7 @@ try {
       nested_worker_heavy_lie_ms: round2(nestedHeavyWall - nestedHeavyPerf),
       nested_worker_empty_lie_ms: round2(nestedEmptyWall - nestedEmptyPerf),
       nested_worker_iters: NESTED_ITERS,
+      ...(debugVsPerf || {}),
     },
   });
 } catch (_e) {

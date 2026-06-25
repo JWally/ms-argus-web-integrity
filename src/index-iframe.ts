@@ -23,31 +23,30 @@
 
 import { collectIntegrity, type IntegrityResult } from './integrity';
 import type { SigintConfig } from './utils/sigint';
-import {
-  type Attestation,
-  type AttestationRequest,
-} from './utils/attestation';
+import { type Attestation, type AttestationRequest } from './utils/attestation';
 import { getPristineRefs } from './utils/pristine-iframe';
 import type { RunRequest, WorkerOutbound } from './worker-runtime/protocol';
+import { fetchWorkerSource } from './worker-runtime/worker-source';
 
 // Baked in at build time via rollup replace. See rollup.config.mjs.
 declare const __ARGUS_API_BASE__: string;
 declare const __ARGUS_SIGINT_BASE_DOMAIN__: string;
 declare const __ARGUS_SIGINT_STAGE_PREFIX__: string;
 declare const __ARGUS_WORKER_URL__: string;
+declare const __ARGUS_WORKER_INTEGRITY__: string;
 
 const API_BASE = __ARGUS_API_BASE__;
 const WORKER_URL = __ARGUS_WORKER_URL__;
+const WORKER_INTEGRITY = __ARGUS_WORKER_INTEGRITY__;
 const SIGINT_CONFIG: SigintConfig = {
   baseDomain: __ARGUS_SIGINT_BASE_DOMAIN__,
   stagePrefix: __ARGUS_SIGINT_STAGE_PREFIX__,
 };
 
-/** Phase-1 grace window: how long to wait for the worker to either
- *  finish or return its phase-1 stub error before falling back to the
- *  legacy in-iframe VM path. Real Phase-2 worker submissions take
- *  ~2-5 seconds; the stub returns in <50 ms. 12 s tolerates a slow
- *  worker bundle fetch on cold-cache mobile networks. */
+/** How long to wait for the dedicated worker path to finish. Real worker
+ *  submissions take ~2-5 seconds. 12s tolerates a slow worker bundle fetch
+ *  on cold-cache mobile networks. There is intentionally no iframe VM
+ *  fallback: worker failure fails the scan closed. */
 const WORKER_TIMEOUT_MS = 12_000;
 
 /**
@@ -73,10 +72,7 @@ async function runViaWorker(
 }> {
   // Fetch the worker source. Served by the same CDN as this bundle,
   // so the same CORS allowlist that the SDK already relies on applies.
-  const src = await fetch(WORKER_URL, { credentials: 'omit' }).then((r) => {
-    if (!r.ok) throw new Error(`worker_fetch_${r.status}`);
-    return r.text();
-  });
+  const src = await fetchWorkerSource(WORKER_URL, WORKER_INTEGRITY);
   const blob = new Blob([src], { type: 'application/javascript' });
   const blobUrl = URL.createObjectURL(blob);
 
@@ -327,20 +323,15 @@ async function main(): Promise<void> {
   try {
     const fingerprint = await collectIntegrity();
 
-    // Mint the argus session_id ONCE per scan, here in the iframe, and use
-    // it for BOTH the worker submission and the in-iframe fallback below.
-    // Each VM run previously minted its own fresh UUID (bridge 0x10), so a
-    // worker→fallback double-submit of the same single-use STUN cipher
-    // arrived under two different session_ids and the fallback was rejected
-    // as a cross-session replay (409). Sharing one id makes that re-submit
-    // an idempotent same-session retry server-side. Generated via the
-    // iframe-pristine randomUUID so a page-realm hook can't force
-    // collisions or covertly mark sessions (same property bridge 0x10
-    // relied on). Must be per-scan, not a stable per-device id.
+    // Mint the argus session_id ONCE per scan, here in the iframe, and pass
+    // it into the worker submission. Generated via iframe-pristine randomUUID
+    // so a page-realm hook can't force collisions or covertly mark sessions
+    // (same property bridge 0x10 relied on). Must be per-scan, not a stable
+    // per-device id.
     const runSessionId = getPristineRefs().randomUUID();
 
-    // Parse the optional attestation request once — both the worker and
-    // the legacy in-iframe fallback need it.
+    // Parse the optional attestation request once and pass it into the
+    // worker. If parsing fails, surface that error alongside the result.
     let attestReq: AttestationRequest | null = null;
     let parseAttestError: string | null = null;
     try {

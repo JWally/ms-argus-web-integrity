@@ -116,6 +116,23 @@ export interface ConsoleTiming {
   /** log_heavy_us / log_tiny_us. ≳2 under CDP, ≈1 without. */
   heavy_over_tiny: number;
   /**
+   * Self-calibrating console-event timing ratio from the 2026-06-16
+   * CDP-signal harness notes. Empty `console.debug("")` isolates the
+   * per-console-call Runtime.consoleAPICalled tax; `performance.now()`
+   * calls provide a same-device timing baseline.
+   *
+   * Observational only until clean baselines are collected across Chrome
+   * majors/platforms. Initial lab split: clean Chrome ≈10, CDP consumers
+   * ≈53-75, candidate threshold ≈25.
+   */
+  debug_over_perf?: number;
+  /** µs/call for `console.debug("")` over `debug_iters` calls. */
+  debug_empty_us?: number;
+  /** µs/call for `performance.now()` over `debug_iters` calls. */
+  perf_now_call_us?: number;
+  /** Iteration count used for `debug_empty_us` and `perf_now_call_us`. */
+  debug_iters?: number;
+  /**
    * Same `log_heavy` loop measured with `Date.now()` — a second clock
    * on a completely different prototype chain (static method on the
    * Date constructor). Real browsers: this agrees with `log_heavy_us`
