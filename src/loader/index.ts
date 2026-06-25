@@ -151,6 +151,11 @@ interface PendingRun {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const IFRAME_MARK = 'data-argus-loader';
+declare const __ARGUS_IFRAME_INTEGRITY__: string | undefined;
+const IFRAME_INTEGRITY =
+  typeof __ARGUS_IFRAME_INTEGRITY__ === 'string'
+    ? __ARGUS_IFRAME_INTEGRITY__
+    : '';
 
 // Applied as an inline style attribute on iframe creation. Off-screen
 // absolute positioning rather than the opacity:0/1×1 pattern:
@@ -404,6 +409,8 @@ function createIframe(
       }
       const s = doc.createElement('script');
       s.src = innerUrl;
+      s.integrity = IFRAME_INTEGRITY;
+      s.crossOrigin = 'anonymous';
       s.onerror = onScriptError;
       doc.body.appendChild(s);
     },
@@ -417,6 +424,9 @@ function createIframe(
 function run(opts: RunOptions = {}): Promise<RunResult> {
   if (!loaderLocation) {
     return Promise.reject(new Error('argus: loader origin unknown'));
+  }
+  if (!IFRAME_INTEGRITY) {
+    return Promise.reject(new Error('argus: iframe_integrity_missing'));
   }
 
   // Supersede any in-flight run + purge stray iframes from prior broken runs.
