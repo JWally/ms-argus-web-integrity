@@ -26,6 +26,18 @@ const sigintBaseDomain = 'argus.pw';
 const sigintStagePrefix = isApiProd ? '' : `${apiStage}-`;
 const workerIntegrity = process.env.ARGUS_WORKER_INTEGRITY || '';
 const iframeIntegrity = process.env.ARGUS_IFRAME_INTEGRITY || '';
+const manifestKeyId =
+  process.env.ARGUS_MANIFEST_KEY_ID || 'argus-dev-jw-manifest-v1';
+const manifestPublicKey = process.env.ARGUS_MANIFEST_PUBLIC_JWK
+  ? JSON.parse(process.env.ARGUS_MANIFEST_PUBLIC_JWK)
+  : {
+      key_ops: ['verify'],
+      ext: true,
+      kty: 'EC',
+      x: 'IYkp3ntcKTMMB5-J1yVZkGyIRo8CydDDRzY8vT5XX5M',
+      y: '8dXgkrrMt5vU901_GSEGJkAO3Gdy5EBMkHI9XzeYuqg',
+      crv: 'P-256',
+    };
 
 if (build === 'iframe' && !workerIntegrity) {
   throw new Error('ARGUS_WORKER_INTEGRITY is required when BUILD=iframe');
@@ -174,6 +186,32 @@ const configs = {
       replace({
         preventAssignment: true,
         __ARGUS_IFRAME_INTEGRITY__: JSON.stringify(iframeIntegrity),
+      }),
+      shared.plugins.typescript,
+      terser({
+        compress: { passes: 2, drop_console: false, drop_debugger: true },
+        mangle: { toplevel: true },
+        format: { comments: false },
+      }),
+    ],
+  },
+
+  // Bootstrap: stable merchant-facing entrypoint. It fetches a signed
+  // release manifest and then loads the current loader with manifest SRI.
+  bootstrap: {
+    input: 'src/bootstrap/index.ts',
+    output: {
+      file: 'dist/argus-bootstrap.v1.iife.js',
+      format: 'iife',
+      sourcemap: false,
+      inlineDynamicImports: true,
+    },
+    plugins: [
+      shared.plugins.nodeResolve,
+      replace({
+        preventAssignment: true,
+        __ARGUS_MANIFEST_PUBLIC_KEY__: JSON.stringify(manifestPublicKey),
+        __ARGUS_MANIFEST_KEY_ID__: JSON.stringify(manifestKeyId),
       }),
       shared.plugins.typescript,
       terser({
