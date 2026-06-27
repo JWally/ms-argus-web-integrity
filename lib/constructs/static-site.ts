@@ -58,6 +58,13 @@ export interface SimpleStaticSiteProps {
    * Logical stage name (e.g. 'qa', 'uat', 'prod')
    */
   stage: string;
+
+  /**
+   * How long immutable release assets remain available after rotation.
+   * Defaults to 14 days, which safely covers aggressive dev rotation while
+   * preventing unbounded release directory growth.
+   */
+  releaseRetention?: Duration;
 }
 
 /**
@@ -65,7 +72,7 @@ export interface SimpleStaticSiteProps {
  *  - Creates an S3 bucket
  *  - Wraps it in a CloudFront distribution
  *  - Optionally sets up a custom domain + certificate if provided
- *  - Deploys local /dist folder to the bucket, invalidates everything
+ *  - Deploys local /dist folder to the bucket, invalidates mutable metadata
  */
 export class StaticSiteConstruct extends Construct {
   public readonly bucket: Bucket;
@@ -76,6 +83,7 @@ export class StaticSiteConstruct extends Construct {
     super(scope, id);
 
     const removalPolicy = props.removalPolicy ?? RemovalPolicy.DESTROY;
+    const releaseRetention = props.releaseRetention ?? Duration.days(14);
 
     // 1) Create a private S3 bucket for the site
     this.bucket = new Bucket(this, 'SiteBucket', {
@@ -83,6 +91,13 @@ export class StaticSiteConstruct extends Construct {
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       autoDeleteObjects: removalPolicy === RemovalPolicy.DESTROY,
       removalPolicy,
+      lifecycleRules: [
+        {
+          id: 'ExpireImmutableSdkReleases',
+          prefix: 'releases/',
+          expiration: releaseRetention,
+        },
+      ],
     });
 
     // 2) Create an Origin Access Identity (OAI) to allow CloudFront to read from the bucket
@@ -287,16 +302,19 @@ export class StaticSiteConstruct extends Construct {
       this.domainUrl = `https://${this.distribution.distributionDomainName}`;
     }
 
-    // 6) Deploy your compiled site from /dist -> S3, with full cache invalidation
+    // 6) Deploy the compiled site from /dist -> S3. Immutable release assets are
+    // content-addressed by directory, so only mutable metadata needs invalidation.
     const distPath = path.join(__dirname, '../../dist');
     new BucketDeployment(this, 'DeployStaticSite', {
       sources: [Source.asset(distPath)],
       destinationBucket: this.bucket,
       prune: false,
       distribution: this.distribution,
-      // Invalidate all paths to ensure fresh content after deployment
-      // This is critical for JavaScript files that may be cached at edge locations
-      distributionPaths: ['/*'],
+      distributionPaths: [
+        '/argus-manifest.json',
+        '/argus-sri.json',
+        '/argus-bootstrap.v1.iife.js',
+      ],
       memoryLimit: 2096,
       cacheControl: [
         CacheControl.fromString('public, max-age=0, must-revalidate'),

@@ -103,7 +103,7 @@ export class SdkRefreshConstruct extends Construct {
           post_build: {
             commands: [
               `aws s3 sync dist/ s3://${siteBucket.bucketName}/ --cache-control "public, max-age=0, must-revalidate"`,
-              `aws cloudfront create-invalidation --distribution-id ${distribution.distributionId} --paths "/*"`,
+              `aws cloudfront create-invalidation --distribution-id ${distribution.distributionId} --paths "/argus-manifest.json" "/argus-sri.json" "/argus-bootstrap.v1.iife.js"`,
               'echo "SDK refresh complete: $(date -u +%FT%TZ)"',
             ],
           },
