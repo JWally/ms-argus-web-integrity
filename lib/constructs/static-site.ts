@@ -201,6 +201,13 @@ export class StaticSiteConstruct extends Construct {
           responseHeadersPolicy: corsResponseHeadersPolicy,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         },
+        // Signed release manifests - fetched by the stable bootstrap.
+        '*.json': {
+          origin: new S3Origin(this.bucket, { originAccessIdentity: oai }),
+          cachePolicy: htmlCachePolicy,
+          responseHeadersPolicy: corsResponseHeadersPolicy,
+          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        },
         // CSS files - cached and compressed
         '*.css': {
           origin: new S3Origin(this.bucket, { originAccessIdentity: oai }),
