@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { sriSha384 } from './worker-sri.mjs';
@@ -53,6 +53,15 @@ function bytesToBase64Url(bytes) {
     .replace(/=+$/g, '');
 }
 
+function releaseSlugFromIntegrity(integrity) {
+  return integrity
+    .replace(/^sha384-/, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
+    .slice(0, 16);
+}
+
 async function signPayload(payload) {
   const privateKeyJwk = process.env.ARGUS_MANIFEST_PRIVATE_JWK
     ? JSON.parse(process.env.ARGUS_MANIFEST_PRIVATE_JWK)
@@ -80,16 +89,28 @@ async function signPayload(payload) {
 const now = new Date();
 const expiresAt = new Date(now.getTime() + 36 * 60 * 60 * 1000);
 const loaderIntegrity = manifest.assets['argus-loader.iife.js'].integrity;
+const releaseId = `${stage}-${releaseSlugFromIntegrity(loaderIntegrity)}`;
+const releasePath = `releases/${releaseId}`;
+const releaseDir = join(distDir, releasePath);
+mkdirSync(releaseDir, { recursive: true });
+for (const file of [
+  'argus-loader.iife.js',
+  'argus-integrity-iframe.iife.js',
+  'argus-integrity-worker.iife.js',
+]) {
+  cpSync(join(distDir, file), join(releaseDir, file));
+}
+
 const releasePayload = {
   v: 1,
   keyId,
-  releaseId: `${stage}-${loaderIntegrity.slice('sha384-'.length, 'sha384-'.length + 16)}`,
+  releaseId,
   environment: stage,
   allowedOrigins: [staticOrigin],
   notBefore: now.toISOString(),
   expiresAt: expiresAt.toISOString(),
   loader: {
-    url: `${staticOrigin}/argus-loader.iife.js`,
+    url: `${staticOrigin}/${releasePath}/argus-loader.iife.js`,
     integrity: loaderIntegrity,
   },
 };

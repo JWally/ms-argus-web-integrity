@@ -32,11 +32,9 @@ import { fetchWorkerSource } from './worker-runtime/worker-source';
 declare const __ARGUS_API_BASE__: string;
 declare const __ARGUS_SIGINT_BASE_DOMAIN__: string;
 declare const __ARGUS_SIGINT_STAGE_PREFIX__: string;
-declare const __ARGUS_WORKER_URL__: string;
 declare const __ARGUS_WORKER_INTEGRITY__: string;
 
 const API_BASE = __ARGUS_API_BASE__;
-const WORKER_URL = __ARGUS_WORKER_URL__;
 const WORKER_INTEGRITY = __ARGUS_WORKER_INTEGRITY__;
 const SIGINT_CONFIG: SigintConfig = {
   baseDomain: __ARGUS_SIGINT_BASE_DOMAIN__,
@@ -178,6 +176,9 @@ async function runViaWorker(
 // valid during the script's parse/execute phase, not inside async callbacks.
 const SCRIPT_SRC =
   (document.currentScript as HTMLScriptElement | null)?.src ?? '';
+const WORKER_URL = SCRIPT_SRC
+  ? new URL('argus-integrity-worker.iife.js', SCRIPT_SRC).toString()
+  : '';
 const SCRIPT_PARAMS: URLSearchParams = (() => {
   try {
     return new URL(SCRIPT_SRC).searchParams;

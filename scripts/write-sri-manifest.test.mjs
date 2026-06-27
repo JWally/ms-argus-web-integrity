@@ -1,5 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -49,11 +55,24 @@ describe('write-sri-manifest', () => {
         /^sha384-/,
       );
       expect(release.payload.loader.url).toBe(
-        'https://static-integrity-dev-jw.argus.pw/argus-loader.iife.js',
+        `https://static-integrity-dev-jw.argus.pw/releases/${release.payload.releaseId}/argus-loader.iife.js`,
       );
       expect(release.payload.loader.integrity).toBe(
         sri.assets['argus-loader.iife.js'].integrity,
       );
+      expect(release.payload.releaseId).toMatch(
+        /^dev-jw-[A-Za-z0-9_-]{16}$/,
+      );
+      expect(release.payload.releaseId).not.toMatch(/[+/=]/);
+      for (const file of [
+        'argus-loader.iife.js',
+        'argus-integrity-iframe.iife.js',
+        'argus-integrity-worker.iife.js',
+      ]) {
+        expect(
+          existsSync(join(dist, 'releases', release.payload.releaseId, file)),
+        ).toBe(true);
+      }
 
       const key = await crypto.subtle.importKey(
         'jwk',

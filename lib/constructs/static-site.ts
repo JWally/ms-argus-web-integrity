@@ -292,6 +292,7 @@ export class StaticSiteConstruct extends Construct {
     new BucketDeployment(this, 'DeployStaticSite', {
       sources: [Source.asset(distPath)],
       destinationBucket: this.bucket,
+      prune: false,
       distribution: this.distribution,
       // Invalidate all paths to ensure fresh content after deployment
       // This is critical for JavaScript files that may be cached at edge locations
