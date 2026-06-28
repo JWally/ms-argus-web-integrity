@@ -53,6 +53,9 @@
     "build:prod": "rm -rf dist && npm run compile:vm && BUILD=prod rollup --config rollup.config.mjs && BUILD=worker rollup --config rollup.config.mjs && ARGUS_WORKER_INTEGRITY=$(node scripts/worker-sri.mjs dist/argus-integrity-worker.iife.js) BUILD=iframe rollup --config rollup.config.mjs && npm run build:loader && npm run build:bootstrap && node scripts/write-sri-manifest.mjs dist",
     "smoke:worker-sri": "node scripts/verify-worker-sri.mjs",
     "smoke:error-cdp": "node scripts/verify-error-cdp-live.mjs",
+    "smoke:release-rotation": "node scripts/verify-release-rotation-live.mjs",
+    "size:report": "npm run build:prod && node scripts/size-report.mjs",
+    "bench:web": "npm run build:prod && BUILD=bench rollup --config rollup.config.mjs && node scripts/bench-web.mjs",
     "deploy": "npm run build:prod && npx cdk deploy ms-argus-web-dev-jw",
     "deploy:e2e": "ARGUS_STAGE=e2e ARGUS_API_STAGE=dev-jw npm run build:prod && npx cdk deploy ms-argus-web-e2e --require-approval never",
     "build:css": "tailwindcss -i public/tw-input.css -o public/styles.css --content 'public/index.html' --minify",
@@ -90,11 +93,9 @@
   },
   "homepage": "https://github.com/abrahamjuliot/CreepJS#readme",
   "dependencies": {
-    "@types/pako": "^2.0.4",
     "aws-cdk-lib": "^2.189.1",
     "constructs": "^10.4.2",
     "detectincognitojs": "^1.6.2",
-    "pako": "^2.1.0",
     "tslib": "^2.8.1"
   },
   "devDependencies": {

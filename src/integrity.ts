@@ -33,7 +33,6 @@ import getCSSMedia from './cssmedia';
 import getWebRTCData from './webrtc';
 import getWindowPrefixes from './window';
 import getBestWorkerScope from './worker';
-import { verifySeal } from './curses';
 
 export interface IntegrityResult {
   meta: {
@@ -81,14 +80,6 @@ export interface IntegrityResult {
 
 export async function collectIntegrity(): Promise<IntegrityResult> {
   const start = performance.now();
-
-  // Build tamper-seal verification (see src/curses). Inert: the seal is never
-  // met at runtime, so this branch is dead — but the `start` guard is a
-  // runtime value the optimizer can't fold, which keeps verifySeal (and its
-  // blobs) in the bundle past tree-shaking.
-  if (verifySeal() && start < 0) {
-    throw new Error('integrity seal mismatch');
-  }
 
   // Sync checks — run immediately
   const css = getCSSKeyCount();

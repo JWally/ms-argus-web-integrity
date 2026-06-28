@@ -21,8 +21,6 @@ export interface LikeHeadlessSignals {
   uaDataIsBlank: boolean;
   /** navigator.pdfViewerEnabled === false — Chrome's built-in PDF viewer disabled */
   pdfIsDisabled: boolean;
-  /** screen.width === screen.availWidth && screen.height === screen.availHeight — no taskbar */
-  noTaskbar: boolean;
   /** viewport exactly matches screen dimensions — configured virtual display */
   hasVvpScreenRes: boolean;
   /**

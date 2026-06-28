@@ -242,14 +242,6 @@ const configs = {
         __ARGUS_SIGINT_BASE_DOMAIN__: JSON.stringify(sigintBaseDomain),
         __ARGUS_SIGINT_STAGE_PREFIX__: JSON.stringify(sigintStagePrefix),
         __ARGUS_WORKER_INTEGRITY__: JSON.stringify(workerIntegrity),
-        // URL of the worker bundle — fetched at runtime and wrapped in a
-        // blob: URL so the spawned Worker stays same-origin to the iframe
-        // (preserves cookie scope for POST_PAYLOAD).
-        __ARGUS_WORKER_URL__: JSON.stringify(
-          isProd
-            ? 'https://static-integrity.argus.pw/argus-integrity-worker.iife.js'
-            : `https://static-integrity-${stage}.argus.pw/argus-integrity-worker.iife.js`,
-        ),
       }),
       shared.plugins.typescript,
       obfuscator({
@@ -450,6 +442,29 @@ const configs = {
         format: {
           comments: false,
         },
+      }),
+    ],
+  },
+
+  // Benchmark-only collector. Not deployed. This mirrors collectIntegrity's
+  // orchestration with per-slice timers so local/CI perf runs can rank the
+  // actual browser cost without adding profiling code to production bundles.
+  bench: {
+    input: 'src/bench-entry.ts',
+    output: {
+      file: 'dist/argus-bench.iife.js',
+      format: 'iife',
+      name: 'ArgusBench',
+      sourcemap: false,
+      inlineDynamicImports: true,
+    },
+    plugins: [
+      shared.plugins.nodeResolve,
+      shared.plugins.typescript,
+      terser({
+        compress: { passes: 1, drop_console: false, drop_debugger: true },
+        mangle: false,
+        format: { comments: false },
       }),
     ],
   },
