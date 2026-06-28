@@ -12,7 +12,6 @@
  * ECDH APIs to defeat bot hooks on top-level `crypto.subtle`.
  */
 
-import { deflateRaw } from 'pako';
 import type { SigintConfig } from '../utils/sigint';
 import {
   fetchTlsFingerprint,
@@ -545,7 +544,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
     },
   });
 
-  // 0x32: ECDH derive + compress + AES-256-GCM encrypt
+  // 0x32: ECDH derive + AES-256-GCM encrypt
   // Returns encrypted Uint8Array: [iv(12) | ciphertext+tag]
   bridge.register(BridgeApi.ECDH_DERIVE_ENCRYPT, {
     call: async (_thisArg, args) => {
@@ -588,8 +587,6 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       // pristine.textEncode runs through the nested-iframe TextEncoder,
       // out of reach of those hooks.
       const encoded = pristine.textEncode(payloadJSON);
-      const compressed = deflateRaw(encoded);
-
       // pristine.getRandomValues for the AES-GCM IV (CASTLE-TO-ARGUS §3.3
       // inline use-site closure). The status-slice native-integrity probe
       // sees scan-time RNG state only; an attacker who installs a Proxy
@@ -602,7 +599,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
       const ciphertext = await subtle.encrypt(
         { name: 'AES-GCM', iv },
         aesKey,
-        compressed.buffer as ArrayBuffer,
+        encoded.buffer as ArrayBuffer,
       );
 
       const ctBytes = new Uint8Array(ciphertext);
@@ -711,7 +708,7 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
           'Content-Type': 'application/octet-stream',
           'X-Argus-Origin': clientPubKeyB64,
           'X-Argus-Session': ctx.sessionToken,
-          'X-Argus-V': '2',
+          'X-Argus-V': '3',
         };
         // The payload is ECDH-encrypted before this call, so we can't add
         // cpi to the body. It's a routing concern anyway — the server
