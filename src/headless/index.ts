@@ -113,11 +113,6 @@ async function hasBlankUaData(): Promise<boolean> {
   }
 }
 
-function hasNoTaskbar(): boolean {
-  const s = topWin.screen;
-  return s.height === s.availHeight && s.width === s.availWidth;
-}
-
 function hasVvpScreenRes(): boolean {
   const s = topWin.screen;
   if (topWin.innerWidth === s.width && topWin.outerHeight === s.height)
@@ -639,7 +634,6 @@ export default async function getHeadlessFeatures(
       uaDataIsBlank: await hasBlankUaData(),
       pdfIsDisabled:
         'pdfViewerEnabled' in navigator && navigator.pdfViewerEnabled === false,
-      noTaskbar: hasNoTaskbar(),
       hasVvpScreenRes: hasVvpScreenRes(),
       hasSoftwareRenderer: hasSoftwareRenderer(workerScope),
       devToolsOpen: detectDevTools(),

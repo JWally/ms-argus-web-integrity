@@ -19,6 +19,7 @@ src/vm/bytecode-modules.ts
 
 # Playwright test results
 test-results/
+bench-results/
 
 # Generated docs (typedoc)
 docs/

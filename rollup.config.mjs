@@ -445,6 +445,29 @@ const configs = {
       }),
     ],
   },
+
+  // Benchmark-only collector. Not deployed. This mirrors collectIntegrity's
+  // orchestration with per-slice timers so local/CI perf runs can rank the
+  // actual browser cost without adding profiling code to production bundles.
+  bench: {
+    input: 'src/bench-entry.ts',
+    output: {
+      file: 'dist/argus-bench.iife.js',
+      format: 'iife',
+      name: 'ArgusBench',
+      sourcemap: false,
+      inlineDynamicImports: true,
+    },
+    plugins: [
+      shared.plugins.nodeResolve,
+      shared.plugins.typescript,
+      terser({
+        compress: { passes: 1, drop_console: false, drop_debugger: true },
+        mangle: false,
+        format: { comments: false },
+      }),
+    ],
+  },
 };
 
 export default [configs[build]];
