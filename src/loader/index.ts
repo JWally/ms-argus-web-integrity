@@ -90,6 +90,21 @@ interface RunOptions {
    */
   attest?: AttestRequest;
   /**
+   * First-party worker mode (CSP hardening). When set, the integrity worker is
+   * loaded directly from this URL via `new Worker(url)` instead of the default
+   * CORS-fetch → Blob → Worker path — but ONLY if the URL is same-origin to the
+   * iframe's document (a Worker's top-level script must be same-origin; a
+   * cross-origin value is ignored and we fall back to the blob path).
+   *
+   * Use ONLY on Argus-owned surfaces (e.g. captcha /embed) that co-locate the
+   * worker on their own origin. There it lets the host enforce a strict
+   * `worker-src 'self'` CSP (which blocks the worker-substitution attack) while
+   * keeping attestation working. Do NOT use on merchant-embedded deployments:
+   * the srcdoc iframe inherits the merchant origin, the worker isn't same-origin
+   * there, and the value is simply ignored (blob path stays).
+   */
+  workerUrl?: string;
+  /**
    * Merchant-supplied page URL — used when the SDK runs inside a
    * cross-origin iframe (Shopify Checkout, embedded checkouts, etc.)
    * where `window.top.location.href` is blocked by the browser. The
@@ -268,6 +283,7 @@ function innerScriptUrl(
   sessionId: string | null,
   cpi: string | null,
   attest: AttestRequest | null,
+  workerUrl: string | null,
   page: {
     pageUrl: string;
     pageTitle: string;
@@ -297,6 +313,7 @@ function innerScriptUrl(
       q.set('attestTtl', String(attest.ttlSeconds));
     }
   }
+  if (workerUrl) q.set('workerUrl', workerUrl);
   if (page.pageUrl) q.set('pageUrl', page.pageUrl);
   if (page.pageTitle) q.set('pageTitle', page.pageTitle);
   if (page.pageSource && page.pageSource !== 'unknown') {
@@ -441,6 +458,10 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
     typeof opts.timeoutMs === 'number' ? opts.timeoutMs : DEFAULT_TIMEOUT_MS;
   const attest =
     opts.attest && typeof opts.attest.purpose === 'string' ? opts.attest : null;
+  const workerUrl =
+    typeof opts.workerUrl === 'string' && opts.workerUrl.length > 0
+      ? opts.workerUrl
+      : null;
 
   // Page URL resolution. Prefer the merchant-supplied value — it works
   // even when the SDK is iframed by a cross-origin embedder (Shopify
@@ -464,7 +485,7 @@ function run(opts: RunOptions = {}): Promise<RunResult> {
 
   let innerUrl: string;
   try {
-    innerUrl = innerScriptUrl(runId, sessionId, cpi, attest, {
+    innerUrl = innerScriptUrl(runId, sessionId, cpi, attest, workerUrl, {
       pageUrl,
       pageTitle: clamp(opts.pageTitle, MAX_PAGE_TITLE_LEN),
       pageSource,
