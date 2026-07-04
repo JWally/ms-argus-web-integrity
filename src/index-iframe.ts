@@ -73,12 +73,20 @@ async function runViaWorker(
 
   try {
     if (FIRST_PARTY_WORKER_URL) {
-      // First-party CSP mode: load a STATIC same-origin worker (no blob) so the
-      // host can enforce `worker-src 'self'`. `new Worker(url)` has no SRI
-      // byte-check like the fetch path, but the worker is same-origin and
-      // Argus-deployed — CSP + the deploy's own integrity chain cover it.
-      worker = new Worker(FIRST_PARTY_WORKER_URL);
-    } else {
+      // First-party CSP mode: try a STATIC worker (no blob) so the host can
+      // enforce `worker-src 'self'`. We can't reliably PRE-check same-origin —
+      // inside a srcdoc iframe `location.origin` is "null" even though a
+      // same-origin `new Worker(url)` constructs fine. So we just try it: a
+      // same-origin URL succeeds; a cross-origin one throws SecurityError
+      // synchronously and we fall through to the blob path (which is what
+      // merchant-embedded deployments always hit).
+      try {
+        worker = new Worker(FIRST_PARTY_WORKER_URL);
+      } catch {
+        worker = null;
+      }
+    }
+    if (!worker) {
       // Default: CORS-fetch the worker source (SRI-validated) from the CDN and
       // blob it so the spawned Worker shares this document's origin. The blob
       // URL is revoked after spawn (source is already loaded by then).
@@ -196,21 +204,16 @@ const SCRIPT_PARAMS: URLSearchParams = (() => {
 
 /**
  * First-party worker override (CSP hardening). When the host passes `workerUrl`
- * AND it's same-origin to this iframe's document, we load the worker statically
- * from it (no blob) so a strict `worker-src 'self'` CSP is enforceable. A
- * Worker's top-level script MUST be same-origin, so a cross-origin value is
- * ignored and we fall back to the default CORS-fetch → blob path. See the
- * `workerUrl` option in loader/index.ts.
+ * we attempt to load the worker statically from it (no blob) so a strict
+ * `worker-src 'self'` CSP is enforceable. We do NOT pre-check same-origin here:
+ * inside a srcdoc iframe `location.origin` serializes to "null" even though the
+ * document IS same-origin with its parent and a same-origin worker constructs
+ * fine — so the check is done by trying `new Worker(url)` and catching (see
+ * runViaWorker). A cross-origin URL (merchant-embedded deployments) throws and
+ * falls back to blob. See the `workerUrl` option in loader/index.ts.
  */
-const FIRST_PARTY_WORKER_URL: string | null = (() => {
-  const raw = SCRIPT_PARAMS.get('workerUrl');
-  if (!raw) return null;
-  try {
-    return new URL(raw, location.href).origin === location.origin ? raw : null;
-  } catch {
-    return null;
-  }
-})();
+const FIRST_PARTY_WORKER_URL: string | null =
+  SCRIPT_PARAMS.get('workerUrl') || null;
 
 /**
  * Decode the attestation request from script-tag query params, if any. The
