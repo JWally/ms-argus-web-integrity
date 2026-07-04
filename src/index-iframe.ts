@@ -68,20 +68,27 @@ async function runViaWorker(
   attestation: Attestation | null;
   attestError: string | null;
 }> {
-  // Fetch the worker source. Served by the same CDN as this bundle,
-  // so the same CORS allowlist that the SDK already relies on applies.
-  const src = await fetchWorkerSource(WORKER_URL, WORKER_INTEGRITY);
-  const blob = new Blob([src], { type: 'application/javascript' });
-  const blobUrl = URL.createObjectURL(blob);
-
-  // Track the Worker handle so we can terminate on timeout/error and
-  // revoke the blob URL after the spawn (the worker has already loaded
-  // its source by the time the URL is revoked).
+  // Track the Worker handle so we can terminate on timeout/error.
   let worker: Worker | null = null;
 
   try {
-    worker = new Worker(blobUrl);
-    URL.revokeObjectURL(blobUrl);
+    if (FIRST_PARTY_WORKER_URL) {
+      // First-party CSP mode: load a STATIC same-origin worker (no blob) so the
+      // host can enforce `worker-src 'self'`. `new Worker(url)` has no SRI
+      // byte-check like the fetch path, but the worker is same-origin and
+      // Argus-deployed — CSP + the deploy's own integrity chain cover it.
+      worker = new Worker(FIRST_PARTY_WORKER_URL);
+    } else {
+      // Default: CORS-fetch the worker source (SRI-validated) from the CDN and
+      // blob it so the spawned Worker shares this document's origin. The blob
+      // URL is revoked after spawn (source is already loaded by then).
+      const src = await fetchWorkerSource(WORKER_URL, WORKER_INTEGRITY);
+      const blobUrl = URL.createObjectURL(
+        new Blob([src], { type: 'application/javascript' }),
+      );
+      worker = new Worker(blobUrl);
+      URL.revokeObjectURL(blobUrl);
+    }
 
     return await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -184,6 +191,24 @@ const SCRIPT_PARAMS: URLSearchParams = (() => {
     return new URL(SCRIPT_SRC).searchParams;
   } catch {
     return new URLSearchParams('');
+  }
+})();
+
+/**
+ * First-party worker override (CSP hardening). When the host passes `workerUrl`
+ * AND it's same-origin to this iframe's document, we load the worker statically
+ * from it (no blob) so a strict `worker-src 'self'` CSP is enforceable. A
+ * Worker's top-level script MUST be same-origin, so a cross-origin value is
+ * ignored and we fall back to the default CORS-fetch → blob path. See the
+ * `workerUrl` option in loader/index.ts.
+ */
+const FIRST_PARTY_WORKER_URL: string | null = (() => {
+  const raw = SCRIPT_PARAMS.get('workerUrl');
+  if (!raw) return null;
+  try {
+    return new URL(raw, location.href).origin === location.origin ? raw : null;
+  } catch {
+    return null;
   }
 })();
 
