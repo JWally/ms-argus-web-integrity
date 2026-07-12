@@ -18,7 +18,7 @@ import {
   fetchTcpProbe,
   fetchH2Probe,
 } from '../utils/sigint';
-import { getPatToken, diagString } from '../utils/pat';
+import { bindPatEndpoint, getPatToken, diagString } from '../utils/pat';
 import { getCryptoId } from '../utils/get-crypto-id';
 import { getClientUuid } from '../utils/get-client-uuid';
 import { getPristineRefs } from '../utils/pristine-iframe';
@@ -670,7 +670,9 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
   // forge the diagnostic. Loose-coupling: omit ctx.patEndpoint to skip
   // both entirely.
   const patPromise = ctx.patEndpoint
-    ? getPatToken(ctx.patEndpoint).catch(() => ({
+    ? getPatToken(
+        bindPatEndpoint(ctx.patEndpoint, ctx.cpi, ctx.sessionId),
+      ).catch(() => ({
         token: '',
         status: 0,
         ok: false,
