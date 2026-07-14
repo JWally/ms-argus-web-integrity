@@ -13,6 +13,7 @@
  *     iat: number,          // unix seconds (issued-at)
  *     exp: number,          // unix seconds (expires-at)
  *     keyId: string,        // short hash of publicKey, for cross-assertion matching
+ *     scanSessionId?: string, // exact integrity scan produced by this run
  *   }))
  *   signature = base64(ECDSA-P256-SHA-256(envelope))
  *   publicKey = base64(SPKI)
@@ -112,6 +113,7 @@ export function buildEnvelope(
   req: AttestationRequest,
   keyId: string,
   nowSeconds: number = Math.floor(Date.now() / 1000),
+  scanSessionId?: string,
 ): { envelope: string; envelopeBytes: Uint8Array } {
   if (typeof req.purpose !== 'string' || req.purpose.length === 0) {
     throw new Error('attestation: purpose required');
@@ -132,6 +134,7 @@ export function buildEnvelope(
     iat: nowSeconds,
     exp: nowSeconds + ttl,
     keyId,
+    ...(scanSessionId ? { scanSessionId } : {}),
   };
 
   const pristine = getPristineRefs();

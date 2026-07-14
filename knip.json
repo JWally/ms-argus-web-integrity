@@ -2,19 +2,16 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
     "src/index.ts",
+    "src/bench-entry.ts",
     "src/index-iframe.ts",
+    "src/index-worker.ts",
     "src/index-vm.ts",
     "src/loader/index.ts",
     "bin/*.ts",
     "lib/**/*.ts",
     "e2e/**/*.spec.ts"
   ],
-  "project": [
-    "src/**/*.ts",
-    "lib/**/*.ts",
-    "bin/**/*.ts",
-    "e2e/**/*.ts"
-  ],
+  "project": ["src/**/*.ts", "lib/**/*.ts", "bin/**/*.ts", "e2e/**/*.ts"],
   "ignore": [
     "**/*.test.ts",
     "scripts/**",

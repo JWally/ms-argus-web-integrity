@@ -42,10 +42,13 @@ function post(msg: WorkerOutbound): void {
   self.postMessage(msg);
 }
 
-async function buildAttestation(req: AttestationRequest): Promise<Attestation> {
+async function buildAttestation(
+  req: AttestationRequest,
+  scanSessionId: string,
+): Promise<Attestation> {
   const keys = await getCryptoId();
   const keyId = await computeKeyId(keys.publicKey);
-  const { envelope } = buildEnvelope(req, keyId);
+  const { envelope } = buildEnvelope(req, keyId, undefined, scanSessionId);
   const signature = await signWithCryptoId(envelope);
   return { envelope, signature, publicKey: keys.publicKey, keyId };
 }
@@ -151,7 +154,7 @@ async function handleRun(req: RunRequest): Promise<void> {
     let attestError: string | null = null;
     if (req.attestReq) {
       try {
-        attestation = await buildAttestation(req.attestReq);
+        attestation = await buildAttestation(req.attestReq, vm.sessionId);
       } catch (e) {
         attestError = (e as Error).message ?? 'unknown';
       }
