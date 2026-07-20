@@ -2,10 +2,10 @@ pre-commit:
   parallel: true
   commands:
     lint:
-      glob: "*.{ts,tsx}"
+      glob: '*.{ts,tsx}'
       run: npx eslint --fix {staged_files} && git add {staged_files}
     format:
-      glob: "*.{ts,tsx,js,json,md}"
+      glob: '*.{ts,tsx,js,json,md}'
       run: npx prettier --write {staged_files} && git add {staged_files}
 
 pre-push:
@@ -15,3 +15,5 @@ pre-push:
       run: npm run test:coverage
     duplication:
       run: npm run duplication
+    cleanup-ratchets:
+      run: npm run test:cleanup-ratchets

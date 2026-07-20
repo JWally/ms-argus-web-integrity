@@ -13,6 +13,22 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/**/types.ts', 'src/bench-entry.ts'],
       thresholds: {
+        statements: 33,
+        branches: 28,
+        functions: 25,
+        lines: 33,
+        'src/transport/integrity-collect-client.ts': {
+          statements: 100,
+          branches: 100,
+          functions: 100,
+          lines: 100,
+        },
+        'src/transport/integrity-collect-request.ts': {
+          statements: 100,
+          branches: 100,
+          functions: 100,
+          lines: 100,
+        },
         'src/trash/index.ts': {
           statements: 85,
           branches: 85,

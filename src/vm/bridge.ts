@@ -23,6 +23,7 @@ import { getCryptoId } from '../utils/get-crypto-id';
 import { getClientUuid } from '../utils/get-client-uuid';
 import { getPristineRefs } from '../utils/pristine-iframe';
 import type { IntegrityResult } from '../integrity';
+import { submitIntegrityPayload } from '../transport/integrity-collect-client';
 
 export interface ApiHandler {
   get?: () => unknown;
@@ -705,68 +706,17 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
     call: async (_thisArg, args) => {
       const encrypted = args[0] as Uint8Array;
       const clientPubKeyB64 = args[1] as string;
-      try {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/octet-stream',
-          'X-Argus-Origin': clientPubKeyB64,
-          'X-Argus-Session': ctx.sessionToken,
-          'X-Argus-V': '3',
-        };
-        // The payload is ECDH-encrypted before this call, so we can't add
-        // cpi to the body. It's a routing concern anyway — the server
-        // partitions on (cpi, session_id) regardless of the encrypted
-        // fingerprint contents.
-        if (ctx.cpi) headers['X-Argus-Cpi'] = ctx.cpi;
-        // NOTE: We can't manually inject `Sec-CH-UA` headers here even
-        // though Chrome doesn't default-send them on cross-origin Worker
-        // fetches — fetch spec forbids JS from setting any header whose
-        // name starts with `Sec-`. The server-side detector
-        // (merchant-projection.ts `detectUaFamilyHeaderMismatch`) carves
-        // out submissions whose body ships `device.navigator.userAgentData
-        // .brands`, which is enough to distinguish honest Chromium from
-        // stealth-strip Puppeteer.
-        const resp = await fetch(ctx.apiEndpoint, {
-          method: 'POST',
-          // Send the `_fpid` third-party cookie (scoped to .argus.pw) so
-          // the API can verify its sig against the current TLS token.
-          credentials: 'include',
-          headers,
-          body: encrypted.buffer as ArrayBuffer,
-        });
-        if (!resp.ok) {
-          ctx.onSubmissionError?.(
-            `http_${resp.status}_${resp.statusText || 'error'}`,
-          );
-          return '';
-        }
-        const json = (await resp.json()) as Record<string, unknown>;
-        const sid = (json.session_id as string) ?? '';
-        if (!sid) ctx.onSubmissionError?.('no_session_id_in_response');
-        // Server may return an updated client-carried blob. Forward to
-        // the outer caller (iframe via index-worker.ts onCacheUpdate)
-        // which writes it to localStorage('cache'). The bridge can't
-        // write storage from worker scope. Strictly typed string +
-        // length guard so a malformed response can't propagate garbage.
-        const nextCache = json.cache;
-        if (
-          typeof nextCache === 'string' &&
-          nextCache.length > 0 &&
-          nextCache.length < 16384
-        ) {
-          try {
-            ctx.onCacheUpdate?.(nextCache);
-          } catch {
-            /* never-throw contract — iframe handler may throw if the
-               postMessage clone limit is hit; we just drop. */
-          }
-        }
-        return sid;
-      } catch (err) {
-        ctx.onSubmissionError?.(
-          `fetch_threw: ${(err as Error)?.message ?? 'unknown'}`,
-        );
-        return '';
-      }
+      // Fetch cannot set Sec-* client-hint headers. The server detector uses
+      // device.navigator.userAgentData instead when Chromium omits them.
+      return submitIntegrityPayload({
+        endpoint: ctx.apiEndpoint,
+        encrypted,
+        clientPublicKey: clientPubKeyB64,
+        sessionToken: ctx.sessionToken,
+        cpi: ctx.cpi,
+        onSubmissionError: ctx.onSubmissionError,
+        onCacheUpdate: ctx.onCacheUpdate,
+      });
     },
   });
 
