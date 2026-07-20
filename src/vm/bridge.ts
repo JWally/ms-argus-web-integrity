@@ -430,9 +430,8 @@ export function createArgusVmBridge(ctx: ArgusVmContext): ApiBridge {
 
   // 0x33 signs arbitrary bytes with the cached non-extractable private key.
   // Input is a "raw-byte string" where each char code is one byte (0-255) —
-  // this matches the rest of the bytecode's string-as-byte pattern so the VM
-  // can pass XOR'd output directly without base64 round-tripping. Returns
-  // base64 signature, or "" on failure.
+  // this matches the rest of the bytecode's string-as-byte pattern and avoids
+  // base64 round-tripping. Returns a base64 signature, or "" on failure.
   bridge.register(BridgeApi.SIGN_BYTES, {
     call: async (_thisArg, args) => {
       try {

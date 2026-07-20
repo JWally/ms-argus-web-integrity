@@ -511,32 +511,17 @@ let patToken = __api_call_async(0x44);
 // JS-level fetch() actually saw. Forensic only; not server-trusted.
 let patDiag = __api_call_async(0x45);
 
-// ── 1b. Device identity: sign XOR'd h2 token ──────────────────────────
+// ── 1b. Device identity: sign the current payload-bound input ─────────
 // Persistent ECDSA pubkey survives the session (IndexedDB, non-extractable).
-// Server verifies sig over xor(h2Token, KEY) — proves we hold the private
-// key AND made a real h2-probe call within its 90s TTL.
-//
-// The XOR layer is cheap obfuscation: a reverser hooking crypto.subtle.sign
-// sees garbage bytes rather than an obviously-HMAC'd token format. The key
-// is code-level, not a secret — but they'd have to reverse this bytecode
-// to discover it. Must match DEVICE_IDENTITY_XOR_KEY in ms-argus-api
-// (src/helpers/device-identity.ts) or server sigs won't verify.
+// Server verifies h2Token|stableHash|fuzzyHash, proving we hold the private
+// key, made a fresh H2 probe, and signed the device hash carried on this
+// submission. The current collector has no fuzzy hash, so that field is the
+// empty string on both sides of the contract.
+let meta = __api_get(0x11);
 let devicePubkey = __api_call_async(0x1f);
 let deviceSig = '';
 if (h2Token.length > 0 && devicePubkey.length > 0) {
-  let xorKey = [
-    0x5a, 0x3f, 0x91, 0x2c, 0xb7, 0x44, 0x68, 0xe1, 0xd0, 0x0a, 0x7d, 0x59,
-    0x13, 0xee, 0x82, 0xbc,
-  ];
-  let xored = '';
-  i = 0;
-  while (i < h2Token.length) {
-    xored = xored + String.fromCharCode(h2Token.charCodeAt(i) ^ xorKey[i % 16]);
-    i = i + 1;
-  }
-  deviceSig = __api_call_async(0x33, xored);
-  xored = 0;
-  xorKey = 0;
+  deviceSig = __api_call_async(0x33, h2Token + '|' + meta.compositeHash + '|');
 }
 
 // ── 2. ECDH encrypt + POST ────────────────────────────────────────────
@@ -621,9 +606,9 @@ if (serverPubKey.length > 0) {
   // only the opaque UUID (0x10) and meta (0x11) — no payload-level JSON
   // serialization is exposed to JS-level attackers anymore.
   let identifiers = { session_id: __api_get(0x10) };
-  let meta = __api_get(0x11);
   let payload = {
     identifiers: identifiers,
+    hashes: { stable: meta.compositeHash, fuzzy: '' },
     device: device,
     meta: meta,
   };

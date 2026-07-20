@@ -32,6 +32,17 @@ interface RunResult {
   durationMs: number;
 }
 
+interface BrowserArgus {
+  run(options: {
+    sessionId: string;
+    timeoutMs: number;
+    cpi?: string;
+  }): Promise<unknown>;
+  destroy(): void;
+}
+
+type ArgusWindow = Window & { argus: BrowserArgus };
+
 // Drive the DEPLOYED, isolated e2e SDK (static-integrity-e2e.argus.pw), which
 // serves loader/iframe/worker so the real Worker submission path runs. The old
 // localhost harness loaded a local build whose iframe fetched the worker
@@ -52,7 +63,11 @@ test.describe('loader end-to-end', () => {
     );
     await page.goto(HARNESS_URL, { waitUntil: 'domcontentloaded' });
     await expect
-      .poll(() => page.evaluate(() => typeof (window as any).argus === 'object'))
+      .poll(() =>
+        page.evaluate(
+          () => typeof (window as unknown as ArgusWindow).argus === 'object',
+        ),
+      )
       .toBeTruthy();
   });
 
@@ -68,9 +83,16 @@ test.describe('loader end-to-end', () => {
 
     // 2. Trigger the run and capture the result
     const cpi = process.env.ARGUS_TEST_CPI;
-    const result = await page.evaluate(async ({ sid, c }) => {
-      return await (window as any).argus.run({ sessionId: sid, timeoutMs: 20000, cpi: c });
-    }, { sid: merchantSessionId, c: cpi }) as RunResult;
+    const result = (await page.evaluate(
+      async ({ sid, c }) => {
+        return await (window as unknown as ArgusWindow).argus.run({
+          sessionId: sid,
+          timeoutMs: 20000,
+          cpi: c,
+        });
+      },
+      { sid: merchantSessionId, c: cpi },
+    )) as RunResult;
 
     // 3. Result shape
     expect(result.sessionId).toBe(merchantSessionId);
@@ -82,8 +104,7 @@ test.describe('loader end-to-end', () => {
 
     // 4. Iframe cleaned up
     const iframeCount = await page.evaluate(
-      () =>
-        document.querySelectorAll('iframe[data-argus-loader]').length,
+      () => document.querySelectorAll('iframe[data-argus-loader]').length,
     );
     expect(iframeCount, 'iframe removed after resolve').toBe(0);
 
@@ -91,12 +112,17 @@ test.describe('loader end-to-end', () => {
     const loaderErrors = consoleErrors.filter((e) =>
       e.includes('argus-loader'),
     );
-    expect(loaderErrors, `loader errors: ${loaderErrors.join(' | ')}`).toEqual([]);
+    expect(loaderErrors, `loader errors: ${loaderErrors.join(' | ')}`).toEqual(
+      [],
+    );
 
     // 6. Server stored it — DDB direct lookup. Bound to storage shape, not
     //    the merchant-facing API response shape (which will tighten later).
     const record = await fetchIntegrityRecord(result.argusSessionId);
-    expect(record, `no integrity record found for ${result.argusSessionId}`).toBeTruthy();
+    expect(
+      record,
+      `no integrity record found for ${result.argusSessionId}`,
+    ).toBeTruthy();
     expect(record!.session_id).toBe(result.argusSessionId);
     expect(typeof record!.created_at).toBe('number');
     // Device payload was decrypted server-side and stored
@@ -105,12 +131,15 @@ test.describe('loader end-to-end', () => {
     expect(record!.analysis, 'analysis block should be present').toBeTruthy();
 
     // 7. Device-identity verification outcome is recorded. Bytecode signed
-    //    xor(h2Token, KEY) with the persistent ECDSA pubkey; server verified.
+    //    h2Token|stableHash|fuzzyHash with the persistent ECDSA pubkey.
     const ident = (record as Record<string, unknown>).identification as
       | { pubkey?: string; verified?: boolean; reason?: string | null }
       | undefined;
     expect(ident, 'identification section should be present').toBeTruthy();
-    expect(ident!.verified, `identity verify failed: ${ident!.reason ?? 'n/a'}`).toBe(true);
+    expect(
+      ident!.verified,
+      `identity verify failed: ${ident!.reason ?? 'n/a'}`,
+    ).toBe(true);
     expect(ident!.pubkey).toMatch(/^[A-Za-z0-9+/=]{80,}$/);
 
     // 8. WebRTC sigint attestation — our own STUN server returned one or
@@ -132,7 +161,10 @@ test.describe('loader end-to-end', () => {
           fresh?: boolean;
         }
       | undefined;
-    expect(webrtcSigint, 'analysis.webrtc_sigint should be present').toBeTruthy();
+    expect(
+      webrtcSigint,
+      'analysis.webrtc_sigint should be present',
+    ).toBeTruthy();
     expect(
       webrtcSigint!.candidate_count,
       'at least one sigintCandidate reached the server',
@@ -184,9 +216,17 @@ test.describe('loader end-to-end', () => {
   test('superseded run rejects first, resolves second', async ({ page }) => {
     const cpi = process.env.ARGUS_TEST_CPI;
     const outcome = await page.evaluate(async (c) => {
-      const a = (window as any).argus.run({ sessionId: 'first', timeoutMs: 20000, cpi: c });
+      const a = (window as unknown as ArgusWindow).argus.run({
+        sessionId: 'first',
+        timeoutMs: 20000,
+        cpi: c,
+      });
       // Start second run immediately — should supersede the first.
-      const b = (window as any).argus.run({ sessionId: 'second', timeoutMs: 20000, cpi: c });
+      const b = (window as unknown as ArgusWindow).argus.run({
+        sessionId: 'second',
+        timeoutMs: 20000,
+        cpi: c,
+      });
       const aResult = await a.then(
         (r: unknown) => ({ ok: true, r }),
         (e: Error) => ({ ok: false, error: e.message }),
@@ -198,15 +238,26 @@ test.describe('loader end-to-end', () => {
       return { aResult, bResult };
     }, cpi);
 
-    expect(outcome.aResult.ok, `first run should reject: ${JSON.stringify(outcome.aResult)}`).toBe(false);
-    expect((outcome.aResult as { error: string }).error).toContain('superseded');
-    expect(outcome.bResult.ok, `second run should resolve: ${JSON.stringify(outcome.bResult)}`).toBe(true);
+    expect(
+      outcome.aResult.ok,
+      `first run should reject: ${JSON.stringify(outcome.aResult)}`,
+    ).toBe(false);
+    expect((outcome.aResult as { error: string }).error).toContain(
+      'superseded',
+    );
+    expect(
+      outcome.bResult.ok,
+      `second run should resolve: ${JSON.stringify(outcome.bResult)}`,
+    ).toBe(true);
   });
 
   test('destroy() rejects in-flight run', async ({ page }) => {
     const err = await page.evaluate(async () => {
-      const p = (window as any).argus.run({ sessionId: 'will-be-killed', timeoutMs: 20000 });
-      (window as any).argus.destroy();
+      const p = (window as unknown as ArgusWindow).argus.run({
+        sessionId: 'will-be-killed',
+        timeoutMs: 20000,
+      });
+      (window as unknown as ArgusWindow).argus.destroy();
       try {
         await p;
         return null;

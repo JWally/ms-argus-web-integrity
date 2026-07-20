@@ -27,7 +27,11 @@ function readVmSrc(): string {
 
 /** A minimal fake IntegrityResult shape — only the fields bytecode reads. */
 const fakeSlice = { marker: 'x' };
-const fakeMeta = { version: 'test', loadedAt: 0 };
+const fakeMeta = {
+  version: 'test',
+  loadedAt: 0,
+  compositeHash: 'device-hash',
+};
 
 interface PostedPayload {
   json: string;
@@ -37,6 +41,7 @@ interface PostedPayload {
 function makeBridge(opts: {
   nowSequence: number[];
   postCapture: PostedPayload;
+  signedInputCapture?: { value: string };
 }): ApiBridge {
   const bridge = new ApiBridge();
   let nowIdx = 0;
@@ -67,15 +72,25 @@ function makeBridge(opts: {
   }
 
   // Async device-identity APIs
-  bridge.register(BridgeApi.GET_CRYPTO_PUBKEY, { call: async () => '' });
+  bridge.register(BridgeApi.GET_CRYPTO_PUBKEY, {
+    call: async () => (opts.signedInputCapture ? 'device-pubkey' : ''),
+  });
   bridge.register(BridgeApi.GET_CLIENT_UUID, { call: async () => null });
   bridge.register(BridgeApi.GET_CACHE, { get: () => '' });
-  bridge.register(BridgeApi.SIGN_BYTES, { call: async () => '' });
+  bridge.register(BridgeApi.SIGN_BYTES, {
+    call: async (_thisArg, args) => {
+      if (!opts.signedInputCapture) return '';
+      opts.signedInputCapture.value = args[0] as string;
+      return 'device-signature';
+    },
+  });
 
   // Sigint probes
   bridge.register(BridgeApi.FETCH_TLS_FP, { call: async () => '' });
   bridge.register(BridgeApi.FETCH_TCP_PROBE, { call: async () => '' });
-  bridge.register(BridgeApi.FETCH_H2_PROBE, { call: async () => '' });
+  bridge.register(BridgeApi.FETCH_H2_PROBE, {
+    call: async () => (opts.signedInputCapture ? 'h2-token' : ''),
+  });
   bridge.register(BridgeApi.FETCH_PAT_TOKEN, { call: async () => '' });
   bridge.register(BridgeApi.FETCH_PAT_DIAG, { call: async () => '' });
 
@@ -117,6 +132,27 @@ function makeBridge(opts: {
 }
 
 describe('VM anti-debug timing (item 5)', () => {
+  it('signs the current payload-bound identity contract', async () => {
+    const mod = compile(readVmSrc());
+    const postCapture: PostedPayload = { json: '' };
+    const signedInputCapture = { value: '' };
+    const bridge = makeBridge({
+      nowSequence: [0, 10, 20, 30],
+      postCapture,
+      signedInputCapture,
+    });
+
+    await executeAsync(mod, bridge);
+
+    const payload = JSON.parse(postCapture.json);
+    expect(payload.hashes).toEqual({ stable: 'device-hash', fuzzy: '' });
+    expect(signedInputCapture.value).toBe('h2-token|device-hash|');
+    expect(payload.device_identity).toEqual({
+      pubkey: 'device-pubkey',
+      sig: 'device-signature',
+    });
+  });
+
   it('runs clean: small time deltas → no tamper_bits in payload', async () => {
     const src = readVmSrc();
     const mod = compile(src);
