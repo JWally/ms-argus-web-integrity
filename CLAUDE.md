@@ -94,7 +94,7 @@ If you're iterating on SDK code without touching the API contract,
 `lefthook.yml` runs:
 
 - pre-commit: prettier format + eslint --fix on staged TS files
-- pre-push: `npm run test:coverage` + `npm run duplication`
+- pre-push: coverage + duplication + cleanup line-count ratchets
 
 Both are fast. If the pre-push fails on duplication, it's usually
 copy-paste in newly added code — refactor or excerpt-tag the
@@ -103,6 +103,6 @@ intentional duplication.
 ## Where to find the hardening lore
 
 If you're touching crypto, iframe lifting, or the bridge, read
-[CASTLE-TO-ARGUS.md](../CASTLE-TO-ARGUS.md) §3 (one directory up).
+[CASTLE-TO-ARGUS.md](../reading-list/CASTLE-TO-ARGUS.md) §3.
 Specifically §3.11 (serialization-chokepoint MITM) and §3.14
 (the audit that produced `src/utils/pristine-iframe.ts`).

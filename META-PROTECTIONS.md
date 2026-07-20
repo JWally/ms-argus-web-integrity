@@ -225,11 +225,10 @@ publish it whole.
 > (`device-mac.ts:241-247`), **delete** the iframe `runArgusVm()` fallback, and
 > make `absent`/no-`worker_attest` a hard reject — in one coordinated change.
 >
-> (Aside, for later: a *version*-gated exemption would have been spoofable —
-> `x-argus-v` is client-controlled, so a bot claims legacy and downgrades, same
-> oracle as Class C. The lesson is to **not create a legacy exemption** post-launch
-> unless forced; if ever forced, gate it on a dated global cutover, never on a
-> client-claimed version. Pre-launch this is moot — there's nothing to exempt.)
+> (Historical design note: a *version*-gated policy exemption would have been
+> spoofable because `x-argus-v` is client-controlled. As of 2026-07-20 the API
+> accepts only the current v3 transport and rejects missing, v1, v2, and unknown
+> values; the header selects no policy exemption and no legacy decoder remains.)
 >
 > One real wrinkle even in dev: **deploy ordering across the two repos.** Ship the
 > SDK (always emits `worker_attest`, no iframe fallback) at/before the API tighten,

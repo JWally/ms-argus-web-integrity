@@ -10,9 +10,9 @@ import collectFingerprint from 'argus';
 const result = await collectFingerprint();
 
 // Access different hash types
-console.log(result.hashes.stable);  // Stable device hash
-console.log(result.hashes.fuzzy);   // Fuzzy matching hash
-console.log(result.hashes.loose);   // Full fingerprint hash
+console.log(result.hashes.stable); // Stable device hash
+console.log(result.hashes.fuzzy); // Fuzzy matching hash
+console.log(result.hashes.loose); // Full fingerprint hash
 
 // Bot detection signals
 console.log(result.botSignals.isHeadless);
@@ -30,19 +30,23 @@ npm install argus
 
 ```
 src/
-├── fingerprint.ts       # Main orchestrator - runs all modules in parallel
-├── index.ts             # Public API exports
-├── [modules]/           # Individual fingerprinting modules (see below)
+├── loader/              # Public run/destroy API and srcdoc iframe lifecycle
+├── index-iframe.ts      # Iframe host and worker/fallback coordination
+├── index-worker.ts      # Worker-side VM host
+├── integrity.ts         # Fingerprint collection orchestrator
+├── vm/                  # Bytecode interpreter, pristine bridge, and packing
+├── transport/           # Pure encrypted request-envelope builders
+├── [signal modules]/    # Individual fingerprinting modules (see below)
 ├── errors/              # Error capture and normalization
-└── utils/               # Shared utilities (crypto, evercookie, sigint)
+└── utils/               # Shared crypto, identity, PAT, and sigint adapters
 
 lib/
 ├── constructs/          # CDK constructs for deployment
 ├── stacks/              # CDK stack definitions
 └── pipeline/            # CI/CD pipeline
 
-rust/
-└── wasm-fingerprint/    # WASM module for hardware fingerprinting
+contracts/
+└── integrity-collect/   # Test-only copy of the API-owned wire contract
 ```
 
 ---
@@ -51,13 +55,13 @@ rust/
 
 ```typescript
 interface FingerprintResult {
-  loose: Record<string, any>;      // Full raw fingerprint data
-  stable: Record<string, any>;     // Filtered/hardened for production
+  loose: Record<string, any>; // Full raw fingerprint data
+  stable: Record<string, any>; // Filtered/hardened for production
   hashes: {
-    loose: string;                 // Hash of full fingerprint
-    stable: string;                // Hash of stable fingerprint
-    fuzzy: string;                 // Fuzzy matching hash
-    deviceOfTimezone: string;      // Device + timezone composite
+    loose: string; // Hash of full fingerprint
+    stable: string; // Hash of stable fingerprint
+    fuzzy: string; // Fuzzy matching hash
+    deviceOfTimezone: string; // Device + timezone composite
   };
   botSignals: {
     botHash: string;
@@ -133,6 +137,7 @@ Collects timing data for server-side clock skew analysis. Each device's crystal 
 ### WASM Benchmarks (`src/wasm/`)
 
 Runs CPU/memory benchmarks via WebAssembly for hardware fingerprinting:
+
 - CPU/FPU performance
 - JIT warmup curves
 - Memory ceiling and growth patterns
@@ -220,7 +225,7 @@ Multi-storage persistent device identifier that survives cookie clears.
 import { getEvercookieId, clearEvercookieId } from 'argus';
 
 const { id, mechanisms } = await getEvercookieId();
-console.log(id);         // Persistent device ID
+console.log(id); // Persistent device ID
 console.log(mechanisms); // Which storage mechanisms succeeded
 ```
 
@@ -259,9 +264,9 @@ const sigint = await collectSigintData({
   // ... config
 });
 
-console.log(sigint.tls);       // JA3/JA4 fingerprints
-console.log(sigint.tcp);       // TCP RTT data
-console.log(sigint.stun);      // STUN binding results
+console.log(sigint.tls); // JA3/JA4 fingerprints
+console.log(sigint.tcp); // TCP RTT data
+console.log(sigint.stun); // STUN binding results
 ```
 
 ### Unified Load Function
@@ -273,7 +278,7 @@ import { load } from 'argus';
 
 const result = await load({
   enableSigint: true,
-  sigint: { baseDomain: 'your-domain.com' }
+  sigint: { baseDomain: 'your-domain.com' },
 });
 
 console.log(result.fingerprint);
@@ -328,13 +333,13 @@ npm run cdk:diff
 
 Target: < 1 second total collection time. All modules run in parallel.
 
-| Module | Typical Time |
-|--------|--------------|
-| Audio | ~100ms |
-| Canvas | ~50ms |
-| WebGL | ~30ms |
-| Fonts | ~200ms |
-| WASM | ~100-300ms |
+| Module    | Typical Time   |
+| --------- | -------------- |
+| Audio     | ~100ms         |
+| Canvas    | ~50ms          |
+| WebGL     | ~30ms          |
+| Fonts     | ~200ms         |
+| WASM      | ~100-300ms     |
 | **Total** | **~300-600ms** |
 
 ---
