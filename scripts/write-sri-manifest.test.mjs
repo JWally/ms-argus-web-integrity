@@ -37,6 +37,8 @@ describe('write-sri-manifest', () => {
         'argus-loader.iife.js',
         'argus-integrity-iframe.iife.js',
         'argus-integrity-worker.iife.js',
+        'argus-proxy-loader.iife.js',
+        'argus-proxy-iframe.iife.js',
       ]) {
         writeFileSync(join(dist, file), `${file}:test-bytes`);
       }

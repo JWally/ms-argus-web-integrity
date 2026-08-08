@@ -20,6 +20,28 @@ console.log(result.botSignals.hasLies);
 console.log(result.botSignals.lieCount);
 ```
 
+### Proxy-only browser build
+
+Use the reduced loader when only network/proxy assessment is needed. It keeps
+the normal `window.argus.run()` result and API session shape, but collects only
+the TLS, TCP, HTTP/2, WebRTC, and lightweight client-id evidence.
+
+```html
+<script src="https://static-integrity-dev-jw.argus.pw/argus-proxy-loader.iife.js"></script>
+<script>
+  const result = await window.argus.run({
+    cpi: 'argus_cpi_test_...',
+    sessionId: 'checkout-123',
+  });
+</script>
+```
+
+The API marks these records as `product: "proxy_v1"`. Merchant responses use
+a dedicated network-only projection: session metadata, `network_tampering`,
+the verdict, IP/ASN/location, lightweight identification, velocity, and
+network tags. Browser, automation, device-tampering, worker, incognito, and
+device-history fields are omitted rather than returned as misleading defaults.
+
 ## Installation
 
 ```bash

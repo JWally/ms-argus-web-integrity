@@ -7,6 +7,7 @@
     "src/index-worker.ts",
     "src/index-vm.ts",
     "src/loader/index.ts",
+    "src/proxy/index-iframe.ts",
     "bin/*.ts",
     "lib/**/*.ts",
     "e2e/**/*.spec.ts"
