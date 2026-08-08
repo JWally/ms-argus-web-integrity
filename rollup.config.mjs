@@ -42,7 +42,7 @@ const manifestPublicKey = process.env.ARGUS_MANIFEST_PUBLIC_JWK
 if (build === 'iframe' && !workerIntegrity) {
   throw new Error('ARGUS_WORKER_INTEGRITY is required when BUILD=iframe');
 }
-if (build === 'loader' && !iframeIntegrity) {
+if ((build === 'loader' || build === 'proxy-loader') && !iframeIntegrity) {
   throw new Error('ARGUS_IFRAME_INTEGRITY is required when BUILD=loader');
 }
 
@@ -186,6 +186,37 @@ const configs = {
       replace({
         preventAssignment: true,
         __ARGUS_IFRAME_INTEGRITY__: JSON.stringify(iframeIntegrity),
+        __ARGUS_IFRAME_FILENAME__: JSON.stringify(
+          'argus-integrity-iframe.iife.js',
+        ),
+      }),
+      shared.plugins.typescript,
+      terser({
+        compress: { passes: 2, drop_console: false, drop_debugger: true },
+        mangle: { toplevel: true },
+        format: { comments: false },
+      }),
+    ],
+  },
+
+  // Proxy loader: same merchant-facing API and iframe isolation, but points
+  // at the reduced network-only iframe artifact.
+  'proxy-loader': {
+    input: 'src/loader/index.ts',
+    output: {
+      file: 'dist/argus-proxy-loader.iife.js',
+      format: 'iife',
+      sourcemap: false,
+      inlineDynamicImports: true,
+    },
+    plugins: [
+      shared.plugins.nodeResolve,
+      replace({
+        preventAssignment: true,
+        __ARGUS_IFRAME_INTEGRITY__: JSON.stringify(iframeIntegrity),
+        __ARGUS_IFRAME_FILENAME__: JSON.stringify(
+          'argus-proxy-iframe.iife.js',
+        ),
       }),
       shared.plugins.typescript,
       terser({
@@ -311,6 +342,35 @@ const configs = {
           toplevel: true,
           properties: { regex: /^_[a-z]/ },
         },
+        format: { comments: false },
+      }),
+    ],
+  },
+
+  // Reduced proxy product: no VM, worker, canvas/audio/font/headless slices,
+  // or browser-tampering collectors. It retains authoritative sigint,
+  // WebRTC/STUN, a lightweight persistent id, and v3 ECDH transport.
+  'proxy-iframe': {
+    input: 'src/proxy/index-iframe.ts',
+    output: {
+      file: 'dist/argus-proxy-iframe.iife.js',
+      format: 'iife',
+      name: 'ArgusProxyIframe',
+      sourcemap: false,
+      inlineDynamicImports: true,
+    },
+    plugins: [
+      shared.plugins.nodeResolve,
+      replace({
+        preventAssignment: true,
+        __ARGUS_API_BASE__: JSON.stringify(apiBase),
+        __ARGUS_SIGINT_BASE_DOMAIN__: JSON.stringify(sigintBaseDomain),
+        __ARGUS_SIGINT_STAGE_PREFIX__: JSON.stringify(sigintStagePrefix),
+      }),
+      shared.plugins.typescript,
+      terser({
+        compress: { passes: 3, drop_console: true, drop_debugger: true },
+        mangle: { toplevel: true, properties: { regex: /^_[a-z]/ } },
         format: { comments: false },
       }),
     ],

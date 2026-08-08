@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 const limits = new Map([
   ['src/vm/bridge.ts', 724],
   ['src/utils/sigint.ts', 848],
-  ['src/loader/index.ts', 712],
+  ['src/loader/index.ts', 717],
+  ['src/proxy/index-iframe.ts', 129],
+  ['src/proxy/payload.ts', 61],
+  ['src/proxy/transport.ts', 99],
   ['src/index-iframe.ts', 416],
   ['src/transport/integrity-collect-request.ts', 58],
   ['src/transport/integrity-collect-client.ts', 79],

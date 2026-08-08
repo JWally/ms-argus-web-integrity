@@ -55,13 +55,16 @@ that test CPIs don't leak into Git.
 
 ## Build outputs
 
-`npm run build:prod` produces three IIFE bundles in `dist/`:
+`npm run build:prod` produces the normal bundles plus a proxy-only pair in
+`dist/`:
 
 | Bundle                           | Role                                                             |
 | -------------------------------- | ---------------------------------------------------------------- |
 | `argus-loader.iife.js`           | thin loader exposed as `window.argus`; creates the srcdoc iframe |
 | `argus-integrity-iframe.iife.js` | iframe-side host page that boots the VM                          |
 | `argus-integrity.iife.js`        | the VM bytecode + bridge that runs inside the iframe             |
+| `argus-proxy-loader.iife.js`     | same public loader API, pointed at the reduced proxy iframe      |
+| `argus-proxy-iframe.iife.js`     | TLS/TCP/H2/WebRTC/client-id collection and encrypted submission  |
 
 Loader is deterministic across builds; the other two contain
 build-time-baked metadata so two consecutive builds produce

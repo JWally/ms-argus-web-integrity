@@ -152,10 +152,15 @@ interface PendingRun {
 const DEFAULT_TIMEOUT_MS = 10_000;
 const IFRAME_MARK = 'data-argus-loader';
 declare const __ARGUS_IFRAME_INTEGRITY__: string | undefined;
+declare const __ARGUS_IFRAME_FILENAME__: string | undefined;
 const IFRAME_INTEGRITY =
   typeof __ARGUS_IFRAME_INTEGRITY__ === 'string'
     ? __ARGUS_IFRAME_INTEGRITY__
     : '';
+const IFRAME_FILENAME =
+  typeof __ARGUS_IFRAME_FILENAME__ === 'string'
+    ? __ARGUS_IFRAME_FILENAME__
+    : 'argus-integrity-iframe.iife.js';
 
 // Applied as an inline style attribute on iframe creation. Off-screen
 // absolute positioning rather than the opacity:0/1×1 pattern:
@@ -281,7 +286,7 @@ function innerScriptUrl(
     throw new Error('argus: unable to resolve loader script origin');
   }
   const url = new URL(
-    `${loaderLocation.basePath}/argus-integrity-iframe.iife.js`,
+    `${loaderLocation.basePath}/${IFRAME_FILENAME}`,
     loaderLocation.origin,
   );
   const q = url.searchParams;

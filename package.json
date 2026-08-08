@@ -51,7 +51,7 @@
     "build:iframe": "npm run compile:vm && npm run build:worker && ARGUS_WORKER_INTEGRITY=$(node scripts/worker-sri.mjs dist/argus-integrity-worker.iife.js) BUILD=iframe rollup --config rollup.config.mjs",
     "build:worker": "npm run compile:vm && BUILD=worker rollup --config rollup.config.mjs",
     "compile:vm": "npx tsx scripts/compile-vm.ts",
-    "build:prod": "rm -rf dist && npm run compile:vm && BUILD=prod rollup --config rollup.config.mjs && BUILD=worker rollup --config rollup.config.mjs && ARGUS_WORKER_INTEGRITY=$(node scripts/worker-sri.mjs dist/argus-integrity-worker.iife.js) BUILD=iframe rollup --config rollup.config.mjs && npm run build:loader && npm run build:bootstrap && node scripts/write-sri-manifest.mjs dist",
+    "build:prod": "rm -rf dist && npm run compile:vm && BUILD=prod rollup --config rollup.config.mjs && BUILD=worker rollup --config rollup.config.mjs && ARGUS_WORKER_INTEGRITY=$(node scripts/worker-sri.mjs dist/argus-integrity-worker.iife.js) BUILD=iframe rollup --config rollup.config.mjs && npm run build:loader && BUILD=proxy-iframe rollup --config rollup.config.mjs && ARGUS_IFRAME_INTEGRITY=$(node scripts/worker-sri.mjs dist/argus-proxy-iframe.iife.js) BUILD=proxy-loader rollup --config rollup.config.mjs && npm run build:bootstrap && node scripts/write-sri-manifest.mjs dist",
     "smoke:worker-sri": "node scripts/verify-worker-sri.mjs",
     "smoke:error-cdp": "node scripts/verify-error-cdp-live.mjs",
     "smoke:release-rotation": "node scripts/verify-release-rotation-live.mjs",
