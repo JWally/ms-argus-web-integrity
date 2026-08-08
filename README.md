@@ -36,9 +36,11 @@ the TLS, TCP, HTTP/2, WebRTC, and lightweight client-id evidence.
 </script>
 ```
 
-The API marks these records as `product: "proxy_v1"`. Merchant projections
-retain the standard response shape and add an `assessment` field identifying
-`network_tampering` as evaluated and the two skipped axes as not evaluated.
+The API marks these records as `product: "proxy_v1"`. Merchant responses use
+a dedicated network-only projection: session metadata, `network_tampering`,
+the verdict, IP/ASN/location, lightweight identification, velocity, and
+network tags. Browser, automation, device-tampering, worker, incognito, and
+device-history fields are omitted rather than returned as misleading defaults.
 
 ## Installation
 
